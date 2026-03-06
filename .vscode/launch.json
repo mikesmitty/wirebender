@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "TinyGo Debug",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "executable": "${workspaceFolder}/build.elf",
+            "configFiles": [
+                "${workspaceFolder}/openocd.cfg",
+            ],
+            "device": "RP2350",
+            "deviceName": "RP2350",
+            "svdFile": "${userHome}/git/tinygo/lib/cmsis-svd/data/RaspberryPi/rp2350.svd",
+            "preLaunchTask": "${defaultBuildTask}",
+            // "runToEntryPoint": "main.main",
+            "runToEntryPoint": "runtime._panic",
+            // "showDevDebugOutput": "raw",
+            "rttConfig": {
+                "enabled": true,
+                "clearSearch": false,
+                "polling_interval": 5,
+                "decoders": [
+                    {
+                        "label": "rtt-console",
+                        "port": 0,
+                        "timestamp": true,
+                        "type": "console"
+                    }
+                ]
+            }
+        }
+    ]
+}

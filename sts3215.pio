@@ -1,0 +1,40 @@
+
+
+.program sts3215_tx
+; 8N1 UART TX using open-drain (pindir control).
+; Pin value must be set to 0.
+; OSR bits: 1 means drive low (pindir=1), 0 means release (pindir=0).
+; Data is shifted LSB first.
+; Packet format: [Stop(0), ~d7, ~d6, ~d5, ~d4, ~d3, ~d2, ~d1, ~d0, Start(1)]
+; Total 10 bits.
+    pull block
+    set x, 9
+bitloop:
+    out pindirs, 1 [6] ; 1 (out) + 6 (delay) + 1 (jmp) = 8 cycles per bit
+    jmp x-- bitloop
+
+.program sts3215_rx
+; 8N1 UART RX.
+; Wait for start bit (low).
+    wait 0 pin 0
+    ; Wait 0.75 bit periods to sample earlier in bit 0.
+    ; This compensates for slow fall times on open-drain lines.
+    ; 6 cycles total (wait 1 + nop 5) = 0.75 bits at 8 cycles/bit.
+    nop [5]
+    set x, 7
+rx_bitloop:
+    in pins, 1 [6]     ; 1 (in) + 6 (delay) + 1 (jmp) = 8 cycles per bit
+    jmp x-- rx_bitloop
+    push block
+    ; Wait for stop bit (high) or just end. 
+    ; The next 'wait 0 pin 0' will handle the next start bit.
+
+% go {
+//go:build rp
+
+package main
+
+import (
+	pio "github.com/tinygo-org/pio/rp2-pio"
+)
+%}

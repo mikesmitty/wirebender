@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(arm-none-eabi-objdump:*)",
+      "Bash(arm-none-eabi-nm:*)"
+    ]
+  }
+}

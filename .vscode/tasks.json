@@ -1,0 +1,29 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "TinyGo Clean",
+            "type": "shell",
+            "command": "tinygo clean",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+            },
+            "detail": "Cleans the TinyGo cache directory"
+        },
+        {
+            "label": "TinyGo Build",
+            "type": "shell",
+            "command": "../tinygo/build/tinygo build -target=pico2 -serial=rtt -o ${workspaceFolder}/build.elf ${workspaceFolder}",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new",
+                "close": true
+            }
+        }
+    ]
+}
