@@ -131,7 +131,7 @@ func (s *STS3215) WriteRaw(id uint8, inst uint8, params []uint8) int {
 		s.rxSm.RxGet()
 	}
 
-	for _, b := range packet {
+	for i, b := range packet {
 		val := uint32(1) // Start bit
 		for j := 0; j < 8; j++ {
 			if (b & (1 << j)) == 0 {
@@ -143,8 +143,15 @@ func (s *STS3215) WriteRaw(id uint8, inst uint8, params []uint8) int {
 		// Wait for the byte to finish shifting out and echo back (10 bits @ 1Mbps = 10us)
 		// 30us ensures the byte is fully received and in the RX FIFO.
 		time.Sleep(30 * time.Microsecond)
-		for !s.rxSm.IsRxFIFOEmpty() {
-			s.rxSm.RxGet() // Drain echo
+
+		// Drain echo for all but the last byte. The last byte's echo is left
+		// in the FIFO — ReadResponse's FF FF header scan naturally skips it.
+		// Draining the last echo risks eating the servo's first response byte
+		// if the servo's return delay is shorter than our drain timing.
+		if i < len(packet)-1 {
+			for !s.rxSm.IsRxFIFOEmpty() {
+				s.rxSm.RxGet()
+			}
 		}
 	}
 	return len(packet)
@@ -232,8 +239,18 @@ func (s *STS3215) Ping(id uint8) error {
 }
 
 func (s *STS3215) ReadRegister(id uint8, reg uint8, count uint8) ([]byte, error) {
-	s.WriteRaw(id, InstRead, []uint8{reg, count})
-	resp, err := s.ReadResponse(time.Millisecond * 100)
+	const maxRetries = 2
+	var resp []byte
+	var err error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		s.WriteRaw(id, InstRead, []uint8{reg, count})
+		resp, err = s.ReadResponse(time.Millisecond * 100)
+		if err == nil {
+			break
+		}
+		// Brief delay before retry to let bus settle
+		time.Sleep(time.Millisecond)
+	}
 	if err != nil {
 		return nil, err
 	}

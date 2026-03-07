@@ -17,10 +17,9 @@ bitloop:
 ; 8N1 UART RX.
 ; Wait for start bit (low).
     wait 0 pin 0
-    ; Wait 0.75 bit periods to sample earlier in bit 0.
-    ; This compensates for slow fall times on open-drain lines.
-    ; 6 cycles total (wait 1 + nop 5) = 0.75 bits at 8 cycles/bit.
-    nop [5]
+    ; Delay to sample at the center of bit 0 (1.5 bit periods from start edge).
+    ; From wait(1) + nop(1+9) + set(1) = 12 cycles to first in = 1.5 bits at 8 cyc/bit.
+    nop [9]
     set x, 7
 rx_bitloop:
     in pins, 1 [6]     ; 1 (in) + 6 (delay) + 1 (jmp) = 8 cycles per bit

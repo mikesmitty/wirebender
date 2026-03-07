@@ -14,9 +14,8 @@
         {
             "label": "TinyGo Build",
             "type": "shell",
-            "command": "make build TINYGO=../tinygo/build/tinygo",
-            // "command": "make build SERIAL=rtt TINYGO=../tinygo/build/tinygo",
-            // "command": "../tinygo/build/tinygo build -target=pico2 -serial=rtt -o ${workspaceFolder}/build.elf ${workspaceFolder}",
+            // "command": "make build TINYGO=../tinygo/build/tinygo",
+            "command": "make build SERIAL=rtt TINYGO=../tinygo/build/tinygo",
             "group": {
                 "kind": "build",
                 "isDefault": true

@@ -60,8 +60,64 @@ func detectPort() (string, error) {
 	case 1:
 		return matches[0], nil
 	default:
-		return "", fmt.Errorf("multiple USB serial ports found: %s — use -port to specify", strings.Join(matches, ", "))
+		// Multiple ports found — probe each one for Wirebender firmware
+		fmt.Printf("Found %d ports, probing for Wirebender...\n", len(matches))
+		for _, port := range matches {
+			if probePort(port) {
+				fmt.Printf("Detected Wirebender on %s\n", port)
+				return port, nil
+			}
+		}
+		return "", fmt.Errorf("no Wirebender device found on any port: %s — use -port to specify", strings.Join(matches, ", "))
 	}
+}
+
+func probePort(portName string) bool {
+	mode := &serial.Mode{
+		BaudRate: 115200,
+		DataBits: 8,
+		Parity:   serial.NoParity,
+		StopBits: serial.OneStopBit,
+	}
+
+	port, err := serial.Open(portName, mode)
+	if err != nil {
+		return false
+	}
+	defer port.Close()
+
+	port.SetReadTimeout(1 * time.Second)
+
+	// Flush stale data
+	buf := make([]byte, 4096)
+	port.SetReadTimeout(50 * time.Millisecond)
+	for {
+		n, _ := port.Read(buf)
+		if n == 0 {
+			break
+		}
+	}
+	port.SetReadTimeout(1 * time.Second)
+
+	// Send help command
+	_, err = port.Write([]byte("help\r\n"))
+	if err != nil {
+		return false
+	}
+
+	// Read response
+	var all []byte
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		n, _ := port.Read(buf)
+		if n > 0 {
+			all = append(all, buf[:n]...)
+			if bytes.Contains(all, []byte("Available commands")) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *ServoConn) SendCommand(cmd string) (string, error) {

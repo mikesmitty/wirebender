@@ -33,7 +33,7 @@ const sts3215_rxWrap = 5
 var sts3215_rxInstructions = []uint16{
 		//     .wrap_target
 		0x2020, //  0: wait   0 pin, 0
-		0xa542, //  1: nop                           [5]
+		0xa942, //  1: nop                           [9]
 		0xe027, //  2: set    x, 7
 		0x4601, //  3: in     pins, 1                [6]
 		0x0043, //  4: jmp    x--, 3

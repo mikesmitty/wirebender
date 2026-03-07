@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 )
 
 func registerTests(tc *TestContext) {
@@ -389,19 +390,40 @@ func (tc *TestContext) SendExpectOK(cmd string) {
 }
 
 func (tc *TestContext) AssertPosition(axis string, expected float64) {
-	resp, err := tc.conn.SendCommand("M114")
-	if err != nil {
-		tc.Fail("M114 failed: %v", err)
-		return
+	const maxRetries = 3
+	var resp string
+	var positions map[string]float64
+	var actual float64
+	var ok bool
+	var lastErr string
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(200 * time.Millisecond)
+		}
+		var err error
+		resp, err = tc.conn.SendCommand("M114")
+		if err != nil {
+			lastErr = fmt.Sprintf("M114 failed: %v", err)
+			continue
+		}
+		positions, err = ParseM114(resp)
+		if err != nil {
+			lastErr = fmt.Sprintf("M114 parse failed: %v (raw: %s)", err, resp)
+			continue
+		}
+		actual, ok = positions[axis]
+		if !ok {
+			lastErr = fmt.Sprintf("%s not found in M114 response: %s", axis, resp)
+			continue
+		}
+		// Success — got a valid reading
+		lastErr = ""
+		break
 	}
-	positions, err := ParseM114(resp)
-	if err != nil {
-		tc.Fail("M114 parse failed: %v (raw: %s)", err, resp)
-		return
-	}
-	actual, ok := positions[axis]
-	if !ok {
-		tc.Fail("%s not found in M114 response: %s", axis, resp)
+
+	if lastErr != "" {
+		tc.Fail(lastErr)
 		return
 	}
 	diff := math.Abs(actual - expected)
