@@ -26,7 +26,21 @@ var (
 	servoPin  = machine.GP26
 	gitHash   string
 	buildTime string
+
+	diagClient *event.EventClient
 )
+
+var servoOnline = map[uint8]bool{
+	ID_FEED:   false,
+	ID_BEND:   false,
+	ID_ROTATE: false,
+}
+
+var servoNames = map[uint8]string{
+	ID_FEED:   "FEED",
+	ID_BEND:   "BEND",
+	ID_ROTATE: "ROTATE",
+}
 
 type AxisState struct {
 	Offset   int16
@@ -65,16 +79,18 @@ func initAxes() {
 		axis.Offset = 2048
 		pos, err := bus.GetPosition(id)
 		if err != nil {
+			servoOnline[id] = false
 			axis.Position = 0
-			fmt.Printf("Servo %d: no response, assuming position 0\n", id)
+			fmt.Printf("Servo %d (%s): no response, assuming position 0\n", id, servoNames[id])
 		} else {
+			servoOnline[id] = true
 			deg := ticksToDegrees(pos - 2048)
 			if id == ID_FEED {
 				axis.Position = feedDegreesToMm(deg)
-				fmt.Printf("Servo %d: position %.1fmm\n", id, axis.Position)
+				fmt.Printf("Servo %d (%s): position %.1fmm\n", id, servoNames[id], axis.Position)
 			} else {
 				axis.Position = deg
-				fmt.Printf("Servo %d: position %.1f°\n", id, axis.Position)
+				fmt.Printf("Servo %d (%s): position %.1f°\n", id, servoNames[id], axis.Position)
 			}
 		}
 	}
@@ -83,6 +99,18 @@ func initAxes() {
 func main() {
 	initBus(servoPin)
 	initAxes()
+
+	// Check if any servos were detected at startup
+	anyOnline := false
+	for _, online := range servoOnline {
+		if online {
+			anyOnline = true
+			break
+		}
+	}
+	if !anyOnline {
+		fmt.Println("WARNING: No servos detected! Check wiring and power.")
+	}
 
 	eb := event.NewEventBus()
 
@@ -95,6 +123,9 @@ func main() {
 	registerHandlers(ch)
 
 	go RunEvery(ch.Update, 50*time.Millisecond)
+
+	diagClient = eb.NewEventClient("heartbeat", topic.BroadcastDiag)
+	go RunEvery(heartbeat, 15*time.Second)
 
 	fmt.Printf("Wirebender ready. Hash: %s Built: %s\n", gitHash, buildTime)
 	fmt.Printf("Current Pin: GP%d\n", servoPin)
@@ -122,6 +153,27 @@ func initBus(pin machine.Pin) {
 	}
 	bus.Enable(true)
 	servoPin = pin
+}
+
+func heartbeat() {
+	for _, id := range []uint8{ID_FEED, ID_BEND, ID_ROTATE} {
+		err := bus.Ping(id)
+		wasOnline := servoOnline[id]
+		nowOnline := err == nil
+		servoOnline[id] = nowOnline
+
+		if wasOnline && !nowOnline {
+			fmt.Printf("Servo %d (%s): OFFLINE\n", id, servoNames[id])
+			if diagClient != nil {
+				diagClient.Diag("Servo %d (%s) went OFFLINE", id, servoNames[id])
+			}
+		} else if !wasOnline && nowOnline {
+			fmt.Printf("Servo %d (%s): ONLINE\n", id, servoNames[id])
+			if diagClient != nil {
+				diagClient.Diag("Servo %d (%s) came ONLINE", id, servoNames[id])
+			}
+		}
+	}
 }
 
 func RunEvery(fn func(), interval time.Duration) {
@@ -219,6 +271,11 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			continue
 		}
 
+		if !servoOnline[id] {
+			fmt.Fprintf(resp, "WARNING: %s servo offline, skipping\n", servoNames[id])
+			continue
+		}
+
 		axis := axes[id]
 		if relativeMode {
 			axis.Position += val
@@ -289,6 +346,10 @@ func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 
 	var errs []string
 	for id := range ids {
+		if !servoOnline[id] {
+			fmt.Fprintf(resp, "WARNING: %s servo offline, skipping\n", servoNames[id])
+			continue
+		}
 		axis := axes[id]
 		axis.Position = 0
 		if err := bus.SetPosition(id, axis.Offset, speed); err != nil {
