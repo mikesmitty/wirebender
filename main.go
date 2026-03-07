@@ -48,17 +48,17 @@ func ticksToDegrees(ticks int16) float64 {
 }
 
 func initAxes() {
-	time.Sleep(100 * time.Millisecond) // let servos boot
+	time.Sleep(100 * time.Millisecond)
 	for id, axis := range axes {
+		axis.Offset = 2048
 		pos, err := bus.GetPosition(id)
 		if err != nil {
-			axis.Offset = 2048 // fallback to servo center
-			fmt.Printf("Servo %d: no response, defaulting offset to 2048\n", id)
+			axis.Position = 0
+			fmt.Printf("Servo %d: no response, assuming position 0\n", id)
 		} else {
-			axis.Offset = pos
-			fmt.Printf("Servo %d: position %d, offset set\n", id, pos)
+			axis.Position = ticksToDegrees(pos - 2048)
+			fmt.Printf("Servo %d: position %.1f°\n", id, axis.Position)
 		}
-		axis.Position = 0
 	}
 }
 
@@ -197,6 +197,13 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			axis.Position += deg
 		} else {
 			axis.Position = deg
+		}
+
+		// Clamp ROTATE axis to [-180, 180] to protect short servo wire
+		if id == ID_ROTATE && axis.Position > 180 {
+			axis.Position = 180
+		} else if id == ID_ROTATE && axis.Position < -180 {
+			axis.Position = -180
 		}
 
 		absTicks := degreesToTicks(axis.Position) + axis.Offset
