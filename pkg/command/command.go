@@ -7,7 +7,7 @@ import (
 	"bending-rodriguez/pkg/event"
 )
 
-type HandlerFunc func(resp *bytes.Buffer, cmd string, params [][]byte) error
+type HandlerFunc func(ch *CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error
 
 type CommandHandler struct {
 	handlers map[string]HandlerFunc
@@ -66,7 +66,7 @@ func (ch *CommandHandler) handleCommand(clientId string, input []byte) (*bytes.B
 	params := words[1:]
 
 	if handler, ok := ch.handlers[cmd]; ok {
-		err := handler(buf, cmd, params)
+		err := handler(ch, buf, cmd, params)
 		return buf, err
 	}
 

@@ -16,7 +16,10 @@ type Serials struct {
 }
 
 func InitSerials(bus *event.EventBus, pub string, subs ...string) *Serials {
-	serialOptions := make(map[string]serial.Serialer)
+	ptty := serial.NewPseudoSerial()
+	serialOptions := map[string]serial.Serialer{
+		"serial": ptty,
+	}
 
 	if reflect.DeepEqual(machine.Serial, machine.USBCDC) {
 		serialOptions["uart"] = machine.DefaultUART

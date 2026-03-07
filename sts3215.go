@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	TicksPerRotation = 4096
+
 	// STS3215 Instructions
 	InstPing      = 0x01
 	InstRead      = 0x02
@@ -320,6 +322,10 @@ func (s *STS3215) GetStatus(id uint8) (ServoStatus, error) {
 		Voltage: data[6],
 		Temp:    data[7],
 	}, nil
+}
+
+func (s *STS3215) SetMiddle(id uint8) {
+	s.WriteRegister(id, RegTorqueEnable, []uint8{128})
 }
 
 func (s *STS3215) Dump(duration time.Duration) {

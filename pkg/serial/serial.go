@@ -49,7 +49,7 @@ func (s *Serial) Update() {
 			s.Event.Debug("Serial received unknown data type: %T", evt.Data)
 			return
 		}
-		s.uart.Write([]byte("\n"))
+		s.uart.Write([]byte("\r\n"))
 
 	default:
 		s.ReadCommand()
@@ -71,32 +71,55 @@ func (s *Serial) ReadCommand() {
 	for s.buf.Len() > 0 {
 		data := s.buf.Bytes()
 
+		// Support <...> format
 		start := bytes.IndexByte(data, '<')
-		if start == -1 {
-			// No start char '<' found, clear the cmdBuffer
+		if start != -1 {
+			if start > 0 {
+				s.buf.Next(start)
+				data = s.buf.Bytes()
+			}
+
+			end := bytes.IndexByte(data, '>')
+			if end != -1 {
+				cmdBuf := new(bytes.Buffer)
+				command := data[1:end]
+				cmdBuf.Write(command)
+				s.Event.Publish(cmdBuf)
+				s.buf.Next(end + 1)
+				continue
+			}
+			// Incomplete <... command, wait for more data
+			break
+		}
+
+		// Support line-based format (G-code style)
+		lineEnd := bytes.IndexAny(data, "\r\n")
+		if lineEnd != -1 {
+			if lineEnd > 0 {
+				cmdBuf := new(bytes.Buffer)
+				command := data[:lineEnd]
+				cmdBuf.Write(command)
+				s.Event.Publish(cmdBuf)
+			}
+			// Consume the command and the line ending
+			s.buf.Next(lineEnd + 1)
+			// Consume any following \r or \n
+			for s.buf.Len() > 0 {
+				next := s.buf.Bytes()[0]
+				if next == '\r' || next == '\n' {
+					s.buf.ReadByte()
+				} else {
+					break
+				}
+			}
+			continue
+		}
+
+		// No < and no \r\n found.
+		// If the buffer is getting too large without a terminator, clear it
+		if s.buf.Len() > 128 {
 			s.buf.Reset()
-			break
 		}
-
-		if start > 0 {
-			// Overwrite any junk data before the start of the command
-			s.buf.Next(start)
-			data = s.buf.Bytes()
-		}
-
-		end := bytes.IndexByte(data, '>')
-		if end == -1 {
-			// We have an incomplete command. Wait for more data.
-			break
-		}
-
-		// Command is trimmed of the start '<' and end '>' before sending
-		cmdBuf := new(bytes.Buffer)
-		command := data[1:end]
-		cmdBuf.Write(command)
-		s.Event.Publish(cmdBuf)
-
-		// Reset to break the loop and be ready to start again
-		s.buf.Reset()
+		break
 	}
 }
