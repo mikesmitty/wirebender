@@ -185,7 +185,11 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			continue
 		}
 		if p[0] == 'S' {
-			val, _ := strconv.ParseInt(string(p[1:]), 10, 16)
+			val, err := strconv.ParseInt(string(p[1:]), 10, 16)
+			if err != nil {
+				fmt.Fprintf(resp, "WARNING: invalid S value '%s' ", p[1:])
+				continue
+			}
 			speed = int16(val)
 		}
 	}
@@ -209,6 +213,7 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 
 		val, err := strconv.ParseFloat(string(p[1:]), 64)
 		if err != nil {
+			fmt.Fprintf(resp, "WARNING: invalid %c value '%s' ", p[0], p[1:])
 			continue
 		}
 
@@ -256,7 +261,11 @@ func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 			ids[ID_ROTATE] = true
 		case 'S':
 			if len(p) >= 2 {
-				val, _ := strconv.ParseInt(string(p[1:]), 10, 16)
+				val, err := strconv.ParseInt(string(p[1:]), 10, 16)
+				if err != nil {
+					fmt.Fprintf(resp, "WARNING: invalid S value '%s' ", p[1:])
+					continue
+				}
 				speed = int16(val)
 			}
 		}
@@ -323,7 +332,12 @@ func handleSetPosition(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 
 		val := 0.0
 		if len(p) >= 2 {
-			val, _ = strconv.ParseFloat(string(p[1:]), 64)
+			var err error
+			val, err = strconv.ParseFloat(string(p[1:]), 64)
+			if err != nil {
+				fmt.Fprintf(resp, "WARNING: invalid %c value '%s' ", p[0], p[1:])
+				continue
+			}
 		}
 
 		pos, err := bus.GetPosition(id)

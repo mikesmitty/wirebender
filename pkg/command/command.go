@@ -57,9 +57,15 @@ func (ch *CommandHandler) handleCmdBuffer(evt event.Event, buf *bytes.Buffer) {
 
 func (ch *CommandHandler) handleCommand(clientId string, input []byte) (*bytes.Buffer, error) {
 	buf := new(bytes.Buffer)
+
+	// Strip G-code comments: everything after ';' is a comment
+	if idx := bytes.IndexByte(input, ';'); idx != -1 {
+		input = input[:idx]
+	}
+
 	words := bytes.Fields(input)
 	if len(words) == 0 {
-		return buf, fmt.Errorf("empty command")
+		return buf, nil
 	}
 
 	cmd := string(words[0])
