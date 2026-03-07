@@ -50,6 +50,7 @@ func main() {
 
 // extractPoints pulls coordinates from Polyline or connected Line entities.
 func extractPoints(d *drawing.Drawing, verbose bool) []mgl64.Vec3 {
+	var paths [][]mgl64.Vec3
 	var lines []struct{ start, end mgl64.Vec3 }
 
 	for _, e := range d.Entities() {
@@ -65,7 +66,7 @@ func extractPoints(d *drawing.Drawing, verbose bool) []mgl64.Vec3 {
 				pts = append(pts, p)
 			}
 			if len(pts) > 1 {
-				return pts
+				paths = append(paths, pts)
 			}
 		case *entity.LwPolyline:
 			if verbose { fmt.Fprintf(os.Stderr, "Found LwPolyline with %d vertices\n", len(ent.Vertices)) }
@@ -77,7 +78,7 @@ func extractPoints(d *drawing.Drawing, verbose bool) []mgl64.Vec3 {
 				pts = append(pts, p)
 			}
 			if len(pts) > 1 {
-				return pts
+				paths = append(paths, pts)
 			}
 		case *entity.Line:
 			lines = append(lines, struct{ start, end mgl64.Vec3 }{
@@ -89,41 +90,72 @@ func extractPoints(d *drawing.Drawing, verbose bool) []mgl64.Vec3 {
 
 	if len(lines) > 0 {
 		if verbose { fmt.Fprintf(os.Stderr, "Found %d LINE entities, chaining...\n", len(lines)) }
-		// Try to chain lines together into a single continuous path.
-		var pts []mgl64.Vec3
-		pts = append(pts, lines[0].start, lines[0].end)
 		used := make(map[int]bool)
-		used[0] = true
+		for i := 0; i < len(lines); i++ {
+			if used[i] {
+				continue
+			}
+			// Start a new chain
+			var pts []mgl64.Vec3
+			pts = append(pts, lines[i].start, lines[i].end)
+			used[i] = true
 
-		for {
-			found := false
-			last := pts[len(pts)-1]
-			for i, l := range lines {
-				if used[i] {
-					continue
+			// Keep growing the chain from both ends if necessary
+			for {
+				found := false
+				head := pts[0]
+				tail := pts[len(pts)-1]
+
+				for j, l := range lines {
+					if used[j] {
+						continue
+					}
+					// Try to append to tail
+					if tail.Sub(l.start).Len() < 1e-6 {
+						pts = append(pts, l.end)
+						used[j] = true
+						found = true
+						break
+					}
+					if tail.Sub(l.end).Len() < 1e-6 {
+						pts = append(pts, l.start)
+						used[j] = true
+						found = true
+						break
+					}
+					// Try to prepend to head
+					if head.Sub(l.start).Len() < 1e-6 {
+						pts = append([]mgl64.Vec3{l.end}, pts...)
+						used[j] = true
+						found = true
+						break
+					}
+					if head.Sub(l.end).Len() < 1e-6 {
+						pts = append([]mgl64.Vec3{l.start}, pts...)
+						used[j] = true
+						found = true
+						break
+					}
 				}
-				if last.Sub(l.start).Len() < 1e-6 {
-					pts = append(pts, l.end)
-					used[i] = true
-					found = true
-					break
-				}
-				if last.Sub(l.end).Len() < 1e-6 {
-					pts = append(pts, l.start)
-					used[i] = true
-					found = true
+				if !found {
 					break
 				}
 			}
-			if !found {
-				break
+			if len(pts) > 1 {
+				paths = append(paths, pts)
 			}
 		}
-		if verbose { fmt.Fprintf(os.Stderr, "Chained into path of %d points\n", len(pts)) }
-		return pts
 	}
 
-	return nil
+	if len(paths) == 0 {
+		return nil
+	}
+
+	if len(paths) > 1 {
+		fmt.Fprintf(os.Stderr, "WARNING: Found %d separate paths in DXF. Only the first path will be converted!\n", len(paths))
+	}
+
+	return paths[0]
 }
 
 // generateGCode converts 3D points into Wirebender G-code (FEED, BEND, ROTATE).
