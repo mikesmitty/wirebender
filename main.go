@@ -178,6 +178,7 @@ func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 
 func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	speed := int16(500)
+	axisNames := map[uint8]string{ID_FEED: "LINEAR", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
 
 	// First pass: parse speed
 	for _, p := range params {
@@ -195,6 +196,7 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 	}
 
 	// Second pass: parse axis positions
+	var errs []string
 	for _, p := range params {
 		if len(p) < 2 {
 			continue
@@ -238,14 +240,23 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			posDeg = axis.Position
 		}
 		absTicks := degreesToTicks(posDeg) + axis.Offset
-		bus.SetPosition(id, absTicks, speed)
+		if err := bus.SetPosition(id, absTicks, speed); err != nil {
+			errs = append(errs, fmt.Sprintf("ERROR: %s unreachable", axisNames[id]))
+		}
 	}
-	resp.WriteString("ok")
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(resp, e)
+		}
+	} else {
+		resp.WriteString("ok")
+	}
 	return nil
 }
 
 func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	speed := int16(500)
+	axisNames := map[uint8]string{ID_FEED: "LINEAR", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
 
 	ids := map[uint8]bool{}
 	for _, p := range params {
@@ -276,13 +287,22 @@ func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 		ids = map[uint8]bool{ID_FEED: true, ID_BEND: true, ID_ROTATE: true}
 	}
 
+	var errs []string
 	for id := range ids {
 		axis := axes[id]
 		axis.Position = 0
-		bus.SetPosition(id, axis.Offset, speed)
+		if err := bus.SetPosition(id, axis.Offset, speed); err != nil {
+			errs = append(errs, fmt.Sprintf("ERROR: %s unreachable", axisNames[id]))
+		}
 	}
 
-	resp.WriteString("ok")
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(resp, e)
+		}
+	} else {
+		resp.WriteString("ok")
+	}
 	return nil
 }
 

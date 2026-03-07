@@ -294,13 +294,18 @@ func (s *STS3215) SetID(oldID, newID uint8) error {
 	return nil
 }
 
-func (s *STS3215) SetPosition(id uint8, pos int16, speed int16) {
+func (s *STS3215) SetPosition(id uint8, pos int16, speed int16) error {
 	val := []uint8{
 		uint8(pos & 0xFF), uint8(pos >> 8),
 		0x00, 0x00,
 		uint8(speed & 0xFF), uint8(speed >> 8),
 	}
 	s.WriteRaw(id, InstWrite, append([]uint8{RegTargetPosition}, val...))
+	_, err := s.ReadResponse(50 * time.Millisecond)
+	if err != nil {
+		return fmt.Errorf("servo %d: %w", id, err)
+	}
+	return nil
 }
 
 func (s *STS3215) GetPosition(id uint8) (int16, error) {
