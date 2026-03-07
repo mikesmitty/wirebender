@@ -301,6 +301,7 @@ func registerHandlers(ch *command.CommandHandler) {
 	ch.RegisterCommandHandler(handleSetRollerDiameter, "M200")
 	ch.RegisterCommandHandler(handleSoftLimits, "M211")
 	ch.RegisterCommandHandler(handleSetPin, "M400")
+	ch.RegisterCommandHandler(handleWaitIdle, "M401")
 }
 
 func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
@@ -322,6 +323,7 @@ func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 	fmt.Fprintln(resp, "  M211 [L<mm>] [B<deg>] [R<deg>]        - Get/set soft position limits (symmetric ±)")
 	fmt.Fprintln(resp, "  M123 [L] [B] [R] [S<id>]              - Set middle position (calibrate to 2048)")
 	fmt.Fprintln(resp, "  M400 P<pin>                           - Set/show servo bus pin")
+	fmt.Fprintln(resp, "  M401                                  - Wait for all axes to reach target")
 	fmt.Fprintln(resp, "  help / ?                              - Show this help")
 	return nil
 }
@@ -885,5 +887,49 @@ func handleSetPin(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 		return nil
 	}
 	fmt.Fprintf(resp, "Current Servo Pin: GP%d", servoPin)
+	return nil
+}
+
+func isAxisSettled(id uint8) bool {
+	pos, err := bus.GetPosition(id)
+	if err != nil {
+		return false
+	}
+	deg := ticksToDegrees(pos - axes[id].Offset)
+	var target float64
+	if id == ID_FEED {
+		target = mmToFeedDegrees(axes[id].Position)
+	} else {
+		target = axes[id].Position
+	}
+	diff := deg - target
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff < 2.0 // 2 degree tolerance
+}
+
+func handleWaitIdle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
+	const maxRetries = 50
+	const retryInterval = 100 * time.Millisecond
+
+	for i := 0; i < maxRetries; i++ {
+		allSettled := true
+		for _, id := range []uint8{ID_FEED, ID_BEND, ID_ROTATE} {
+			if !isAxisSettled(id) {
+				allSettled = false
+				break
+			}
+		}
+		if allSettled {
+			resp.WriteString("ok")
+			return nil
+		}
+		time.Sleep(retryInterval)
+	}
+
+	// Timeout — report current positions for debugging
+	fmt.Fprint(resp, "TIMEOUT: axes still moving. ")
+	handleGetPosition(ch, resp, cmd, params)
 	return nil
 }
