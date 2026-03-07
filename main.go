@@ -19,15 +19,21 @@ const (
 	ID_FEED   = 1
 	ID_BEND   = 2
 	ID_ROTATE = 3
+
+	// Servo health thresholds
+	MaxServoTemp    = 70  // degrees C — warn
+	CritServoTemp   = 80  // degrees C — disable torque
+	MinServoVoltage = 100 // decivolts (10.0V) — warn
+	MaxServoLoad    = 900 // raw load units — warn
 )
 
 var (
-	bus       *STS3215
-	servoPin  = machine.GP26
-	gitHash   string
-	buildTime string
-
+	bus        *STS3215
+	servoPin   = machine.GP26
+	gitHash    string
+	buildTime  string
 	diagClient *event.EventClient
+	monitorEvt *event.EventClient
 )
 
 var servoOnline = map[uint8]bool{
@@ -127,6 +133,9 @@ func main() {
 	diagClient = eb.NewEventClient("heartbeat", topic.BroadcastDiag)
 	go RunEvery(heartbeat, 15*time.Second)
 
+	monitorEvt = eb.NewEventClient("monitor", topic.BroadcastDiag)
+	go RunEvery(monitorServos, 10*time.Second)
+
 	fmt.Printf("Wirebender ready. Hash: %s Built: %s\n", gitHash, buildTime)
 	fmt.Printf("Current Pin: GP%d\n", servoPin)
 	fmt.Println("Mode: Absolute (G90)")
@@ -182,6 +191,47 @@ func RunEvery(fn func(), interval time.Duration) {
 		select {
 		case <-ticker.C:
 			fn()
+		}
+	}
+}
+
+func monitorServos() {
+	ids := []uint8{ID_FEED, ID_BEND, ID_ROTATE}
+	names := map[uint8]string{ID_FEED: "LINEAR", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
+
+	for _, id := range ids {
+		st, err := bus.GetStatus(id)
+		if err != nil {
+			// Skip servos that timeout — bus disconnection is handled elsewhere
+			continue
+		}
+
+		name := names[id]
+
+		// Check critical temperature — disable torque immediately
+		if st.Temp >= CritServoTemp {
+			bus.WriteRegister(id, RegTorqueEnable, []uint8{0})
+			monitorEvt.Diag("CRITICAL: %s temp %dC >= %dC — torque disabled", name, st.Temp, CritServoTemp)
+			continue
+		}
+
+		// Check warning temperature
+		if st.Temp >= MaxServoTemp {
+			monitorEvt.Diag("WARNING: %s temp %dC >= %dC", name, st.Temp, MaxServoTemp)
+		}
+
+		// Check low voltage
+		if st.Voltage < MinServoVoltage {
+			monitorEvt.Diag("WARNING: %s voltage %.1fV < %.1fV", name, float64(st.Voltage)/10.0, float64(MinServoVoltage)/10.0)
+		}
+
+		// Check high load (use absolute value since load can be negative)
+		load := st.Load
+		if load < 0 {
+			load = -load
+		}
+		if load > MaxServoLoad {
+			monitorEvt.Diag("WARNING: %s load %d > %d", name, load, MaxServoLoad)
 		}
 	}
 }
