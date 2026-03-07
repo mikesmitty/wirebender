@@ -285,6 +285,7 @@ func monitorServos() {
 func registerHandlers(ch *command.CommandHandler) {
 	ch.RegisterCommandHandler(handleHelp, "help", "?")
 	ch.RegisterCommandHandler(handleMotion, "G0", "G1")
+	ch.RegisterCommandHandler(handleArc, "G2", "G3")
 	ch.RegisterCommandHandler(handleHome, "G28")
 	ch.RegisterCommandHandler(handleSetAbsolute, "G90")
 	ch.RegisterCommandHandler(handleSetRelative, "G91")
@@ -310,6 +311,8 @@ func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 	fmt.Fprintf(resp, "Wirebender - Hash: %s Built: %s\n", gitHash, buildTime)
 	fmt.Fprintln(resp, "Available commands:")
 	fmt.Fprintf(resp, "  G0/G1 L<mm> B<deg> R<deg> S<speed>    - Move servos (speed max %d)\n", MaxSpeed)
+	fmt.Fprintln(resp, "  G2 R<mm> A<deg> [N<segs>] [S<speed>]  - Clockwise arc (bend positive)")
+	fmt.Fprintln(resp, "  G3 R<mm> A<deg> [N<segs>] [S<speed>]  - Counter-clockwise arc (bend negative)")
 	fmt.Fprintln(resp, "  G28 [L] [B] [R]                       - Home (return to zero)")
 	fmt.Fprintln(resp, "  G90                                   - Absolute positioning mode")
 	fmt.Fprintln(resp, "  G91                                   - Relative positioning mode")
@@ -411,6 +414,93 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 	if warnings != "" {
 		resp.WriteString(warnings)
 	}
+	return nil
+}
+
+func handleArc(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
+	var radius, angle float64
+	var radiusFound, angleFound bool
+	segments := 10
+	speed := int16(500)
+
+	for _, p := range params {
+		if len(p) < 2 {
+			continue
+		}
+		switch p[0] {
+		case 'R':
+			val, err := strconv.ParseFloat(string(p[1:]), 64)
+			if err != nil {
+				return fmt.Errorf("Invalid radius: %s", p[1:])
+			}
+			radius = val
+			radiusFound = true
+		case 'A':
+			val, err := strconv.ParseFloat(string(p[1:]), 64)
+			if err != nil {
+				return fmt.Errorf("Invalid angle: %s", p[1:])
+			}
+			angle = val
+			angleFound = true
+		case 'N':
+			val, err := strconv.ParseInt(string(p[1:]), 10, 32)
+			if err != nil || val < 1 {
+				return fmt.Errorf("Invalid segment count: %s", p[1:])
+			}
+			segments = int(val)
+		case 'S':
+			val, err := strconv.ParseInt(string(p[1:]), 10, 16)
+			if err != nil {
+				return fmt.Errorf("Invalid speed: %s", p[1:])
+			}
+			speed = int16(val)
+		}
+	}
+
+	if !radiusFound || !angleFound {
+		return fmt.Errorf("Usage: %s R<radius_mm> A<angle_deg> [N<segments>] [S<speed>]", cmd)
+	}
+
+	// Determine bend direction: G2 = positive, G3 = negative
+	bendSign := 1.0
+	if cmd == "G3" {
+		bendSign = -1.0
+	}
+
+	// Calculate arc geometry
+	arcLength := radius * (angle * math.Pi / 180.0)
+	feedPerSegment := arcLength / float64(segments)
+	bendPerSegment := (angle / float64(segments)) * bendSign
+
+	feedAxis := axes[ID_FEED]
+	bendAxis := axes[ID_BEND]
+
+	// Execute arc segments
+	for i := 0; i < segments; i++ {
+		// Update positions incrementally (relative-style)
+		feedAxis.Position += feedPerSegment
+		bendAxis.Position += bendPerSegment
+
+		// Convert feed mm to degrees then to ticks
+		feedDeg := mmToFeedDegrees(feedAxis.Position)
+		feedTicks := degreesToTicks(feedDeg) + feedAxis.Offset
+		bus.SetPosition(ID_FEED, feedTicks, speed)
+
+		// Convert bend degrees to ticks
+		bendTicks := degreesToTicks(bendAxis.Position) + bendAxis.Offset
+		bus.SetPosition(ID_BEND, bendTicks, speed)
+
+		// Delay between segments for servo settling
+		time.Sleep(80 * time.Millisecond)
+	}
+
+	// After arc completes, return bend to zero (release the wire)
+	bendAxis.Position = 0
+	bendTicks := degreesToTicks(0) + bendAxis.Offset
+	bus.SetPosition(ID_BEND, bendTicks, speed)
+	time.Sleep(80 * time.Millisecond)
+
+	fmt.Fprintf(resp, "ok Arc %s: R=%.1fmm A=%.1fdeg N=%d arc_len=%.2fmm", cmd, radius, angle, segments, arcLength)
 	return nil
 }
 
