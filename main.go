@@ -25,6 +25,8 @@ const (
 	CritServoTemp   = 80  // degrees C — disable torque
 	MinServoVoltage = 100 // decivolts (10.0V) — warn
 	MaxServoLoad    = 900 // raw load units — warn
+
+	MaxSpeed int16 = 3000
 )
 
 var (
@@ -60,6 +62,50 @@ var axes = map[uint8]*AxisState{
 }
 var relativeMode = false
 var rollerDiameter float64 = 50.0
+
+// Per-axis position limits: [min, max] in user units (mm for FEED, degrees for BEND/ROTATE)
+var axisLimits = map[uint8][2]float64{
+	ID_FEED:   {-1000, 1000},
+	ID_BEND:   {-180, 180},
+	ID_ROTATE: {-180, 180},
+}
+
+var axisNames = map[uint8]string{
+	ID_FEED:   "LINEAR",
+	ID_BEND:   "BEND",
+	ID_ROTATE: "ROTATE",
+}
+
+var axisUnits = map[uint8]string{
+	ID_FEED:   "mm",
+	ID_BEND:   "deg",
+	ID_ROTATE: "deg",
+}
+
+// clampAxis clamps axis.Position to the configured limits and returns a warning string if clamped.
+func clampAxis(id uint8, axis *AxisState) string {
+	limits := axisLimits[id]
+	if axis.Position > limits[1] {
+		axis.Position = limits[1]
+		return fmt.Sprintf(" (%s clamped to %.4g%s)", axisNames[id], limits[1], axisUnits[id])
+	}
+	if axis.Position < limits[0] {
+		axis.Position = limits[0]
+		return fmt.Sprintf(" (%s clamped to %.4g%s)", axisNames[id], limits[0], axisUnits[id])
+	}
+	return ""
+}
+
+// clampSpeed clamps speed to MaxSpeed.
+func clampSpeed(speed int16) int16 {
+	if speed > MaxSpeed {
+		return MaxSpeed
+	}
+	if speed < 0 {
+		speed = -speed
+	}
+	return speed
+}
 
 func degreesToTicks(deg float64) int16 {
 	return int16(deg * TicksPerRotation / 360.0)
@@ -253,13 +299,14 @@ func registerHandlers(ch *command.CommandHandler) {
 	ch.RegisterCommandHandler(handleDiagnostics, "M120")
 	ch.RegisterCommandHandler(handleSetMiddle, "M123")
 	ch.RegisterCommandHandler(handleSetRollerDiameter, "M200")
+	ch.RegisterCommandHandler(handleSoftLimits, "M211")
 	ch.RegisterCommandHandler(handleSetPin, "M400")
 }
 
 func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	fmt.Fprintf(resp, "Wirebender - Hash: %s Built: %s\n", gitHash, buildTime)
 	fmt.Fprintln(resp, "Available commands:")
-	fmt.Fprintln(resp, "  G0/G1 L<mm> B<deg> R<deg> S<speed>    - Move servos (L in mm, B/R in degrees)")
+	fmt.Fprintf(resp, "  G0/G1 L<mm> B<deg> R<deg> S<speed>    - Move servos (speed max %d)\n", MaxSpeed)
 	fmt.Fprintln(resp, "  G28 [L] [B] [R]                       - Home (return to zero)")
 	fmt.Fprintln(resp, "  G90                                   - Absolute positioning mode")
 	fmt.Fprintln(resp, "  G91                                   - Relative positioning mode")
@@ -272,6 +319,7 @@ func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 	fmt.Fprintln(resp, "  M121 S<oldID> P<newID>                - Change servo ID")
 	fmt.Fprintln(resp, "  M120                                  - Run bus diagnostics")
 	fmt.Fprintln(resp, "  M200 [D<mm>]                          - Get/set feed roller diameter")
+	fmt.Fprintln(resp, "  M211 [L<mm>] [B<deg>] [R<deg>]        - Get/set soft position limits (symmetric ±)")
 	fmt.Fprintln(resp, "  M123 [L] [B] [R] [S<id>]              - Set middle position (calibrate to 2048)")
 	fmt.Fprintln(resp, "  M400 P<pin>                           - Set/show servo bus pin")
 	fmt.Fprintln(resp, "  help / ?                              - Show this help")
@@ -280,7 +328,7 @@ func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 
 func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	speed := int16(500)
-	axisNames := map[uint8]string{ID_FEED: "LINEAR", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
+	var warnings string
 
 	// First pass: parse speed
 	for _, p := range params {
@@ -296,6 +344,7 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			speed = int16(val)
 		}
 	}
+	speed = clampSpeed(speed)
 
 	// Second pass: parse axis positions
 	var errs []string
@@ -333,12 +382,7 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			axis.Position = val
 		}
 
-		// Clamp ROTATE axis to [-180, 180] to protect short servo wire
-		if id == ID_ROTATE && axis.Position > 180 {
-			axis.Position = 180
-		} else if id == ID_ROTATE && axis.Position < -180 {
-			axis.Position = -180
-		}
+		warnings += clampAxis(id, axis)
 
 		var posDeg float64
 		if id == ID_FEED {
@@ -358,12 +402,14 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 	} else {
 		resp.WriteString("ok")
 	}
+	if warnings != "" {
+		resp.WriteString(warnings)
+	}
 	return nil
 }
 
 func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	speed := int16(500)
-	axisNames := map[uint8]string{ID_FEED: "LINEAR", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
 
 	ids := map[uint8]bool{}
 	for _, p := range params {
@@ -388,6 +434,7 @@ func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 			}
 		}
 	}
+	speed = clampSpeed(speed)
 
 	// No axes specified means all axes
 	if len(ids) == 0 {
@@ -704,7 +751,6 @@ func handleDiagnostics(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 }
 
 func handleSetMiddle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
-	axisNames := map[uint8]string{ID_FEED: "LINEAR", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
 	axisIDs := map[uint8]bool{}
 
 	var rawIDs []uint8
@@ -762,6 +808,44 @@ func handleSetMiddle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string,
 		}
 	}
 
+	return nil
+}
+
+func handleSoftLimits(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
+	if len(params) == 0 {
+		// Show current limits
+		for _, id := range []uint8{ID_FEED, ID_BEND, ID_ROTATE} {
+			limits := axisLimits[id]
+			fmt.Fprintf(resp, "%s: [%.4g, %.4g] %s\n", axisNames[id], limits[0], limits[1], axisUnits[id])
+		}
+		return nil
+	}
+
+	for _, p := range params {
+		if len(p) < 2 {
+			continue
+		}
+		val, err := strconv.ParseFloat(string(p[1:]), 64)
+		if err != nil {
+			continue
+		}
+		if val < 0 {
+			return fmt.Errorf("Limit value must be non-negative (symmetric ±)")
+		}
+		var id uint8
+		switch p[0] {
+		case 'L':
+			id = ID_FEED
+		case 'B':
+			id = ID_BEND
+		case 'R':
+			id = ID_ROTATE
+		default:
+			continue
+		}
+		axisLimits[id] = [2]float64{-val, val}
+		fmt.Fprintf(resp, "%s limits set to [%.4g, %.4g] %s\n", axisNames[id], -val, val, axisUnits[id])
+	}
 	return nil
 }
 
