@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseM114_Normal(t *testing.T) {
-	input := "FEED: 45.0 BEND: 0.0 ROTATE: 0.0"
+	input := "LINEAR: 45.0mm BEND: 0.0 ROTATE: 0.0"
 	result, err := ParseM114(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -14,8 +14,8 @@ func TestParseM114_Normal(t *testing.T) {
 	if len(result) != 3 {
 		t.Fatalf("expected 3 axes, got %d", len(result))
 	}
-	if result["FEED"] != 45.0 {
-		t.Errorf("FEED = %f, want 45.0", result["FEED"])
+	if result["LINEAR"] != 45.0 {
+		t.Errorf("FEED = %f, want 45.0", result["LINEAR"])
 	}
 	if result["BEND"] != 0.0 {
 		t.Errorf("BEND = %f, want 0.0", result["BEND"])
@@ -26,13 +26,13 @@ func TestParseM114_Normal(t *testing.T) {
 }
 
 func TestParseM114_Negative(t *testing.T) {
-	input := "FEED: -45.0 BEND: -30.0 ROTATE: 0.0"
+	input := "LINEAR: -45.0mm BEND: -30.0 ROTATE: 0.0"
 	result, err := ParseM114(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result["FEED"] != -45.0 {
-		t.Errorf("FEED = %f, want -45.0", result["FEED"])
+	if result["LINEAR"] != -45.0 {
+		t.Errorf("FEED = %f, want -45.0", result["LINEAR"])
 	}
 	if result["BEND"] != -30.0 {
 		t.Errorf("BEND = %f, want -30.0", result["BEND"])
@@ -40,18 +40,18 @@ func TestParseM114_Negative(t *testing.T) {
 }
 
 func TestParseM114_Fractional(t *testing.T) {
-	input := "FEED: 22.5 BEND: 0.0 ROTATE: 0.0"
+	input := "LINEAR: 22.5mm BEND: 0.0 ROTATE: 0.0"
 	result, err := ParseM114(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if math.Abs(result["FEED"]-22.5) > 0.01 {
-		t.Errorf("FEED = %f, want 22.5", result["FEED"])
+	if math.Abs(result["LINEAR"]-22.5) > 0.01 {
+		t.Errorf("FEED = %f, want 22.5", result["LINEAR"])
 	}
 }
 
 func TestParseM114_WithError(t *testing.T) {
-	input := "FEED: 45.0 BEND: ERROR (timeout) ROTATE: 0.0"
+	input := "LINEAR: 45.0mm BEND: ERROR (timeout) ROTATE: 0.0"
 	result, err := ParseM114(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -59,8 +59,8 @@ func TestParseM114_WithError(t *testing.T) {
 	if _, ok := result["BEND"]; ok {
 		t.Error("BEND should be absent (ERROR)")
 	}
-	if result["FEED"] != 45.0 {
-		t.Errorf("FEED = %f, want 45.0", result["FEED"])
+	if result["LINEAR"] != 45.0 {
+		t.Errorf("FEED = %f, want 45.0", result["LINEAR"])
 	}
 }
 
@@ -73,7 +73,7 @@ func TestParseM114_Empty(t *testing.T) {
 
 func TestParseM122_Normal(t *testing.T) {
 	lines := []string{
-		"FEED: ID:1 Pos:45.0 Raw:3072 Speed:0 Load:0 Volt:7V Temp:35C",
+		"LINEAR: ID:1 Pos:45.0mm Raw:3072 Speed:0 Load:0 Volt:7V Temp:35C",
 		"BEND: ID:2 Pos:0.0 Raw:2048 Speed:0 Load:0 Volt:7V Temp:34C",
 		"ROTATE: ID:3 Pos:0.0 Raw:2048 Speed:0 Load:0 Volt:7V Temp:33C",
 	}
@@ -85,7 +85,7 @@ func TestParseM122_Normal(t *testing.T) {
 		t.Fatalf("expected 3 axes, got %d", len(result))
 	}
 
-	feed := result["FEED"]
+	feed := result["LINEAR"]
 	if feed.ID != 1 {
 		t.Errorf("FEED ID = %d, want 1", feed.ID)
 	}
@@ -105,13 +105,13 @@ func TestParseM122_Normal(t *testing.T) {
 
 func TestParseM122_Negative(t *testing.T) {
 	lines := []string{
-		"FEED: ID:1 Pos:-45.0 Raw:1024 Speed:-100 Load:-50 Volt:7V Temp:35C",
+		"LINEAR: ID:1 Pos:-45.0mm Raw:1024 Speed:-100 Load:-50 Volt:7V Temp:35C",
 	}
 	result, err := ParseM122(lines)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	feed := result["FEED"]
+	feed := result["LINEAR"]
 	if feed.Pos != -45.0 {
 		t.Errorf("FEED Pos = %f, want -45.0", feed.Pos)
 	}

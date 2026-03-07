@@ -9,8 +9,8 @@ import (
 
 // ParseM114 parses M114 response like:
 //
-//	FEED: 45.0 BEND: 0.0 ROTATE: 0.0
-var m114Re = regexp.MustCompile(`(\w+):\s*([-\d.]+|ERROR\s*\([^)]*\))`)
+//	LINEAR: 45.0 BEND: 0.0 ROTATE: 0.0
+var m114Re = regexp.MustCompile(`(\w+):\s*([-\d.]+[a-zA-Z]*|ERROR\s*\([^)]*\))`)
 
 func ParseM114(line string) (map[string]float64, error) {
 	matches := m114Re.FindAllStringSubmatch(line, -1)
@@ -25,6 +25,7 @@ func ParseM114(line string) (map[string]float64, error) {
 		if strings.HasPrefix(valStr, "ERROR") {
 			continue
 		}
+		valStr = strings.TrimRight(valStr, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ°")
 		val, err := strconv.ParseFloat(valStr, 64)
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s value %q: %w", name, valStr, err)
@@ -48,9 +49,9 @@ type AxisStatus struct {
 
 // ParseM122 parses M122 multi-line response. Each line like:
 //
-//	FEED: ID:1 Pos:45.0 Raw:3072 Speed:0 Load:0 Volt:7V Temp:35C
+//	LINEAR: ID:1 Pos:45.0 Raw:3072 Speed:0 Load:0 Volt:7V Temp:35C
 var m122Re = regexp.MustCompile(
-	`(\w+):\s*ID:(\d+)\s+Pos:([-\d.]+)\s+Raw:([-\d]+)\s+Speed:([-\d]+)\s+Load:([-\d]+)\s+Volt:(\d+)V\s+Temp:(\d+)C`,
+	`(\w+):\s*ID:(\d+)\s+Pos:([-\d.]+)\S*\s+Raw:([-\d]+)\s+Speed:([-\d]+)\s+Load:([-\d]+)\s+Volt:(\d+)V\s+Temp:(\d+)C`,
 )
 
 func ParseM122(lines []string) (map[string]*AxisStatus, error) {

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"machine"
+	"math"
 	"strconv"
 	"time"
 
@@ -38,6 +39,7 @@ var axes = map[uint8]*AxisState{
 	ID_ROTATE: {},
 }
 var relativeMode = false
+var rollerDiameter float64 = 50.0
 
 func degreesToTicks(deg float64) int16 {
 	return int16(deg * TicksPerRotation / 360.0)
@@ -45,6 +47,16 @@ func degreesToTicks(deg float64) int16 {
 
 func ticksToDegrees(ticks int16) float64 {
 	return float64(ticks) * 360.0 / TicksPerRotation
+}
+
+func mmToFeedDegrees(mm float64) float64 {
+	circumference := math.Pi * rollerDiameter
+	return (mm / circumference) * 360.0
+}
+
+func feedDegreesToMm(deg float64) float64 {
+	circumference := math.Pi * rollerDiameter
+	return (deg / 360.0) * circumference
 }
 
 func initAxes() {
@@ -56,8 +68,14 @@ func initAxes() {
 			axis.Position = 0
 			fmt.Printf("Servo %d: no response, assuming position 0\n", id)
 		} else {
-			axis.Position = ticksToDegrees(pos - 2048)
-			fmt.Printf("Servo %d: position %.1f°\n", id, axis.Position)
+			deg := ticksToDegrees(pos - 2048)
+			if id == ID_FEED {
+				axis.Position = feedDegreesToMm(deg)
+				fmt.Printf("Servo %d: position %.1fmm\n", id, axis.Position)
+			} else {
+				axis.Position = deg
+				fmt.Printf("Servo %d: position %.1f°\n", id, axis.Position)
+			}
 		}
 	}
 }
@@ -132,25 +150,27 @@ func registerHandlers(ch *command.CommandHandler) {
 	ch.RegisterCommandHandler(handleSetID, "M121")
 	ch.RegisterCommandHandler(handleDiagnostics, "M120")
 	ch.RegisterCommandHandler(handleSetMiddle, "M123")
+	ch.RegisterCommandHandler(handleSetRollerDiameter, "M200")
 	ch.RegisterCommandHandler(handleSetPin, "M400")
 }
 
 func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	fmt.Fprintf(resp, "Wirebender - Hash: %s Built: %s\n", gitHash, buildTime)
 	fmt.Fprintln(resp, "Available commands:")
-	fmt.Fprintln(resp, "  G0/G1 F<deg> B<deg> R<deg> S<speed>   - Move servos (degrees, speed in raw units)")
-	fmt.Fprintln(resp, "  G28 [F] [B] [R]                       - Home (return to zero)")
+	fmt.Fprintln(resp, "  G0/G1 L<mm> B<deg> R<deg> S<speed>    - Move servos (L in mm, B/R in degrees)")
+	fmt.Fprintln(resp, "  G28 [L] [B] [R]                       - Home (return to zero)")
 	fmt.Fprintln(resp, "  G90                                   - Absolute positioning mode")
 	fmt.Fprintln(resp, "  G91                                   - Relative positioning mode")
-	fmt.Fprintln(resp, "  G92 [F<deg>] [B<deg>] [R<deg>]        - Set position / declare zero")
-	fmt.Fprintln(resp, "  M17 [F] [B] [R] / M18 [F] [B] [R]    - Enable / disable torque")
+	fmt.Fprintln(resp, "  G92 [L<mm>] [B<deg>] [R<deg>]         - Set position / declare zero")
+	fmt.Fprintln(resp, "  M17 [L] [B] [R] / M18 [L] [B] [R]    - Enable / disable torque")
 	fmt.Fprintln(resp, "  M112                                  - Emergency stop")
-	fmt.Fprintln(resp, "  M114                                  - Get current positions (degrees)")
+	fmt.Fprintln(resp, "  M114                                  - Get current positions (L in mm, B/R in degrees)")
 	fmt.Fprintln(resp, "  M122                                  - Get full servo status")
 	fmt.Fprintln(resp, "  M119 B<id> E<id>                      - Scan for servos in ID range")
 	fmt.Fprintln(resp, "  M121 S<oldID> P<newID>                - Change servo ID")
 	fmt.Fprintln(resp, "  M120                                  - Run bus diagnostics")
-	fmt.Fprintln(resp, "  M123 [F] [B] [R] [S<id>]              - Set middle position (calibrate to 2048)")
+	fmt.Fprintln(resp, "  M200 [D<mm>]                          - Get/set feed roller diameter")
+	fmt.Fprintln(resp, "  M123 [L] [B] [R] [S<id>]              - Set middle position (calibrate to 2048)")
 	fmt.Fprintln(resp, "  M400 P<pin>                           - Set/show servo bus pin")
 	fmt.Fprintln(resp, "  help / ?                              - Show this help")
 	return nil
@@ -177,7 +197,7 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 		}
 		var id uint8
 		switch p[0] {
-		case 'F':
+		case 'L':
 			id = ID_FEED
 		case 'B':
 			id = ID_BEND
@@ -187,16 +207,16 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			continue
 		}
 
-		deg, err := strconv.ParseFloat(string(p[1:]), 64)
+		val, err := strconv.ParseFloat(string(p[1:]), 64)
 		if err != nil {
 			continue
 		}
 
 		axis := axes[id]
 		if relativeMode {
-			axis.Position += deg
+			axis.Position += val
 		} else {
-			axis.Position = deg
+			axis.Position = val
 		}
 
 		// Clamp ROTATE axis to [-180, 180] to protect short servo wire
@@ -206,7 +226,13 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			axis.Position = -180
 		}
 
-		absTicks := degreesToTicks(axis.Position) + axis.Offset
+		var posDeg float64
+		if id == ID_FEED {
+			posDeg = mmToFeedDegrees(axis.Position)
+		} else {
+			posDeg = axis.Position
+		}
+		absTicks := degreesToTicks(posDeg) + axis.Offset
 		bus.SetPosition(id, absTicks, speed)
 	}
 	resp.WriteString("ok")
@@ -222,7 +248,7 @@ func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 			continue
 		}
 		switch p[0] {
-		case 'F':
+		case 'L':
 			ids[ID_FEED] = true
 		case 'B':
 			ids[ID_BEND] = true
@@ -285,7 +311,7 @@ func handleSetPosition(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 		}
 		var id uint8
 		switch p[0] {
-		case 'F':
+		case 'L':
 			id = ID_FEED
 		case 'B':
 			id = ID_BEND
@@ -307,7 +333,11 @@ func handleSetPosition(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 		}
 
 		axis := axes[id]
-		axis.Offset = pos - degreesToTicks(val)
+		if id == ID_FEED {
+			axis.Offset = pos - degreesToTicks(mmToFeedDegrees(val))
+		} else {
+			axis.Offset = pos - degreesToTicks(val)
+		}
 		axis.Position = val
 	}
 
@@ -328,7 +358,7 @@ func parseTorqueTargets(params [][]byte) []uint8 {
 	var ids []uint8
 	for _, p := range params {
 		switch string(p) {
-		case "F":
+		case "L":
 			ids = append(ids, ID_FEED)
 		case "B":
 			ids = append(ids, ID_BEND)
@@ -360,7 +390,7 @@ func handleTorqueDisable(ch *command.CommandHandler, resp *bytes.Buffer, cmd str
 
 func handleGetPosition(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	ids := []uint8{ID_FEED, ID_BEND, ID_ROTATE}
-	names := []string{"FEED", "BEND", "ROTATE"}
+	names := []string{"LINEAR", "BEND", "ROTATE"}
 
 	for i, id := range ids {
 		pos, err := bus.GetPosition(id)
@@ -368,7 +398,11 @@ func handleGetPosition(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 			fmt.Fprintf(resp, "%s: ERROR (%s) ", names[i], err.Error())
 		} else {
 			deg := ticksToDegrees(pos - axes[id].Offset)
-			fmt.Fprintf(resp, "%s: %.1f ", names[i], deg)
+			if id == ID_FEED {
+				fmt.Fprintf(resp, "%s: %.1fmm ", names[i], feedDegreesToMm(deg))
+			} else {
+				fmt.Fprintf(resp, "%s: %.1f ", names[i], deg)
+			}
 		}
 	}
 	return nil
@@ -376,7 +410,7 @@ func handleGetPosition(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 
 func handleGetStatus(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
 	ids := []uint8{ID_FEED, ID_BEND, ID_ROTATE}
-	names := []string{"FEED", "BEND", "ROTATE"}
+	names := []string{"LINEAR", "BEND", "ROTATE"}
 
 	for i, id := range ids {
 		st, err := bus.GetStatus(id)
@@ -384,8 +418,17 @@ func handleGetStatus(ch *command.CommandHandler, resp *bytes.Buffer, cmd string,
 			fmt.Fprintf(resp, "%s: ERROR (%s)\n", names[i], err.Error())
 		} else {
 			deg := ticksToDegrees(st.Pos - axes[id].Offset)
-			fmt.Fprintf(resp, "%s: ID:%d Pos:%.1f Raw:%d Speed:%d Load:%d Volt:%dV Temp:%dC\n",
-				names[i], st.ID, deg, st.Pos, st.Speed, st.Load, st.Voltage/10, st.Temp)
+			var displayPos float64
+			var unit string
+			if id == ID_FEED {
+				displayPos = feedDegreesToMm(deg)
+				unit = "mm"
+			} else {
+				displayPos = deg
+				unit = "°"
+			}
+			fmt.Fprintf(resp, "%s: ID:%d Pos:%.1f%s Raw:%d Speed:%d Load:%d Volt:%dV Temp:%dC\n",
+				names[i], st.ID, displayPos, unit, st.Pos, st.Speed, st.Load, st.Voltage/10, st.Temp)
 		}
 	}
 	return nil
@@ -516,7 +559,7 @@ func handleDiagnostics(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 }
 
 func handleSetMiddle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
-	axisNames := map[uint8]string{ID_FEED: "FEED", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
+	axisNames := map[uint8]string{ID_FEED: "LINEAR", ID_BEND: "BEND", ID_ROTATE: "ROTATE"}
 	axisIDs := map[uint8]bool{}
 
 	var rawIDs []uint8
@@ -525,7 +568,7 @@ func handleSetMiddle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string,
 			continue
 		}
 		switch p[0] {
-		case 'F':
+		case 'L':
 			axisIDs[ID_FEED] = true
 		case 'B':
 			axisIDs[ID_BEND] = true
@@ -542,7 +585,7 @@ func handleSetMiddle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string,
 	}
 
 	if len(axisIDs) == 0 && len(rawIDs) == 0 {
-		return fmt.Errorf("Usage: M123 [F] [B] [R] [S<id>] — specify targets explicitly")
+		return fmt.Errorf("Usage: M123 [L] [B] [R] [S<id>] — specify targets explicitly")
 	}
 
 	// Calibrate named axes
@@ -574,6 +617,26 @@ func handleSetMiddle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string,
 		}
 	}
 
+	return nil
+}
+
+func handleSetRollerDiameter(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
+	for _, p := range params {
+		if len(p) < 2 || p[0] != 'D' {
+			continue
+		}
+		val, err := strconv.ParseFloat(string(p[1:]), 64)
+		if err != nil {
+			return fmt.Errorf("Invalid diameter: %s", p[1:])
+		}
+		if val <= 0 {
+			return fmt.Errorf("Diameter must be positive")
+		}
+		rollerDiameter = val
+		fmt.Fprintf(resp, "Roller diameter set to %.2fmm (circumference %.2fmm)", rollerDiameter, math.Pi*rollerDiameter)
+		return nil
+	}
+	fmt.Fprintf(resp, "Roller diameter: %.2fmm (circumference %.2fmm)", rollerDiameter, math.Pi*rollerDiameter)
 	return nil
 }
 
