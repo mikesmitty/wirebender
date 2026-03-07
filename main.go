@@ -302,6 +302,8 @@ func registerHandlers(ch *command.CommandHandler) {
 	ch.RegisterCommandHandler(handleSoftLimits, "M211")
 	ch.RegisterCommandHandler(handleSetPin, "M400")
 	ch.RegisterCommandHandler(handleWaitIdle, "M401")
+	ch.RegisterCommandHandler(handleSaveState, "M500")
+	ch.RegisterCommandHandler(handleRestoreState, "M501")
 }
 
 func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
@@ -324,6 +326,8 @@ func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 	fmt.Fprintln(resp, "  M123 [L] [B] [R] [S<id>]              - Set middle position (calibrate to 2048)")
 	fmt.Fprintln(resp, "  M400 P<pin>                           - Set/show servo bus pin")
 	fmt.Fprintln(resp, "  M401                                  - Wait for all axes to reach target")
+	fmt.Fprintln(resp, "  M500                                  - Print calibration state as restore command")
+	fmt.Fprintln(resp, "  M501 F<n> B<n> R<n> ...               - Restore saved calibration state")
 	fmt.Fprintln(resp, "  help / ?                              - Show this help")
 	return nil
 }
@@ -931,5 +935,99 @@ func handleWaitIdle(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, 
 	// Timeout — report current positions for debugging
 	fmt.Fprint(resp, "TIMEOUT: axes still moving. ")
 	handleGetPosition(ch, resp, cmd, params)
+	return nil
+}
+
+// M500 — Print current calibration state as a restorable M501 command.
+// Format: M501 F<offset>:<position> B<offset>:<position> R<offset>:<position> D<diameter> G<90|91>
+func handleSaveState(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
+	modeCode := 90
+	if relativeMode {
+		modeCode = 91
+	}
+	fmt.Fprintf(resp, "M501 F%d:%.6f B%d:%.6f R%d:%.6f D%.6f G%d",
+		axes[ID_FEED].Offset, axes[ID_FEED].Position,
+		axes[ID_BEND].Offset, axes[ID_BEND].Position,
+		axes[ID_ROTATE].Offset, axes[ID_ROTATE].Position,
+		rollerDiameter, modeCode)
+	return nil
+}
+
+// M501 — Restore calibration state from parameters.
+// Expected: M501 F<offset>:<position> B<offset>:<position> R<offset>:<position> D<diameter> G<90|91>
+func handleRestoreState(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
+	restored := 0
+	for _, p := range params {
+		if len(p) < 2 {
+			continue
+		}
+		switch p[0] {
+		case 'F', 'B', 'R':
+			var id uint8
+			switch p[0] {
+			case 'F':
+				id = ID_FEED
+			case 'B':
+				id = ID_BEND
+			case 'R':
+				id = ID_ROTATE
+			}
+			// Parse "offset:position"
+			parts := bytes.SplitN(p[1:], []byte(":"), 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("Invalid axis param %q — expected <offset>:<position>", string(p))
+			}
+			offset, err := strconv.ParseInt(string(parts[0]), 10, 16)
+			if err != nil {
+				return fmt.Errorf("Invalid offset in %q: %v", string(p), err)
+			}
+			position, err := strconv.ParseFloat(string(parts[1]), 64)
+			if err != nil {
+				return fmt.Errorf("Invalid position in %q: %v", string(p), err)
+			}
+			axes[id].Offset = int16(offset)
+			axes[id].Position = position
+			restored++
+		case 'D':
+			val, err := strconv.ParseFloat(string(p[1:]), 64)
+			if err != nil {
+				return fmt.Errorf("Invalid diameter: %s", p[1:])
+			}
+			if val <= 0 {
+				return fmt.Errorf("Diameter must be positive")
+			}
+			rollerDiameter = val
+			restored++
+		case 'G':
+			val, err := strconv.ParseInt(string(p[1:]), 10, 16)
+			if err != nil {
+				return fmt.Errorf("Invalid mode: %s", p[1:])
+			}
+			switch val {
+			case 90:
+				relativeMode = false
+			case 91:
+				relativeMode = true
+			default:
+				return fmt.Errorf("Invalid mode G%d — expected G90 or G91", val)
+			}
+			restored++
+		}
+	}
+
+	if restored == 0 {
+		return fmt.Errorf("Usage: M501 F<offset>:<position> B<offset>:<position> R<offset>:<position> D<diameter> G<90|91>")
+	}
+
+	// Report restored state
+	modeStr := "Absolute (G90)"
+	if relativeMode {
+		modeStr = "Relative (G91)"
+	}
+	fmt.Fprintf(resp, "Restored: FEED offset=%d pos=%.2f, BEND offset=%d pos=%.2f, ROTATE offset=%d pos=%.2f, Diameter=%.2fmm, Mode=%s",
+		axes[ID_FEED].Offset, axes[ID_FEED].Position,
+		axes[ID_BEND].Offset, axes[ID_BEND].Position,
+		axes[ID_ROTATE].Offset, axes[ID_ROTATE].Position,
+		rollerDiameter, modeStr)
 	return nil
 }
