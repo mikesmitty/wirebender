@@ -32,8 +32,9 @@ const (
 var (
 	bus        *STS3215
 	servoPin   = machine.GP26
-	gitHash    string
-	buildTime  string
+	version   string
+	gitHash   string
+	buildTime string
 	diagClient *event.EventClient
 	monitorEvt *event.EventClient
 )
@@ -182,7 +183,7 @@ func main() {
 	monitorEvt = eb.NewEventClient("monitor", topic.BroadcastDiag)
 	go RunEvery(monitorServos, 10*time.Second)
 
-	fmt.Printf("Wirebender ready. Hash: %s Built: %s\n", gitHash, buildTime)
+	fmt.Printf("Wirebender %s (hash: %s built: %s)\n", version, gitHash, buildTime)
 	fmt.Printf("Current Pin: GP%d\n", servoPin)
 	fmt.Println("Mode: Absolute (G90)")
 	println("Type 'help' or '?' for available commands.")
@@ -284,6 +285,7 @@ func monitorServos() {
 
 func registerHandlers(ch *command.CommandHandler) {
 	ch.RegisterCommandHandler(handleHelp, "help", "?")
+	ch.RegisterCommandHandler(handleVersion, "M115")
 	ch.RegisterCommandHandler(handleMotion, "G0", "G1")
 	ch.RegisterCommandHandler(handleArc, "G2", "G3")
 	ch.RegisterCommandHandler(handleHome, "G28")
@@ -308,7 +310,7 @@ func registerHandlers(ch *command.CommandHandler) {
 }
 
 func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
-	fmt.Fprintf(resp, "Wirebender - Hash: %s Built: %s\n", gitHash, buildTime)
+	fmt.Fprintf(resp, "Wirebender %s (hash: %s built: %s)\n", version, gitHash, buildTime)
 	fmt.Fprintln(resp, "Available commands:")
 	fmt.Fprintf(resp, "  G0/G1 L<mm> B<deg> R<deg> S<speed>    - Move servos (speed max %d)\n", MaxSpeed)
 	fmt.Fprintln(resp, "  G2 R<mm> A<deg> [N<segs>] [S<speed>]  - Clockwise arc (bend positive)")
@@ -331,7 +333,13 @@ func handleHelp(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 	fmt.Fprintln(resp, "  M401                                  - Wait for all axes to reach target")
 	fmt.Fprintln(resp, "  M500                                  - Print calibration state as restore command")
 	fmt.Fprintln(resp, "  M501 F<n> B<n> R<n> ...               - Restore saved calibration state")
+	fmt.Fprintln(resp, "  M115                                  - Firmware version info")
 	fmt.Fprintln(resp, "  help / ?                              - Show this help")
+	return nil
+}
+
+func handleVersion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
+	fmt.Fprintf(resp, "FIRMWARE_NAME:Wirebender FIRMWARE_VERSION:%s GIT_HASH:%s BUILD_DATE:%s MACHINE_TYPE:WireBender EXTRUDER_COUNT:0\n", version, gitHash, buildTime)
 	return nil
 }
 

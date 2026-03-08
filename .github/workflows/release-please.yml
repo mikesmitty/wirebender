@@ -1,0 +1,114 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      dxf2bend_release_created: ${{ steps.release.outputs['cmd/dxf2bend--release_created'] }}
+      dxf2bend_tag_name: ${{ steps.release.outputs['cmd/dxf2bend--tag_name'] }}
+      dxf2bend_version: ${{ steps.release.outputs['cmd/dxf2bend--version'] }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+
+  build-firmware:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install TinyGo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --pattern '*amd64.deb' --repo tinygo-org/tinygo
+          sudo dpkg -i tinygo_*.deb
+
+      - name: Build firmware
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          make build OUTPUT="wirebender-${TAG}.elf"
+          make build OUTPUT="wirebender-${TAG}.uf2"
+
+      - name: Upload firmware artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "${TAG}" "wirebender-${TAG}.elf" "wirebender-${TAG}.uf2"
+
+  build-dxf2bend:
+    needs: release-please
+    if: needs.release-please.outputs.dxf2bend_release_created == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build dxf2bend
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.release-please.outputs.dxf2bend_version }}
+        run: |
+          BINARY="dxf2bend"
+          if [ "${GOOS}" = "windows" ]; then
+            BINARY="dxf2bend.exe"
+          fi
+          go build -ldflags="-X main.version=${VERSION}" -o "${BINARY}" ./cmd/dxf2bend/
+      - name: Package artifact
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TAG: ${{ needs.release-please.outputs.dxf2bend_tag_name }}
+        run: |
+          ARTIFACT="dxf2bend-${TAG}-${GOOS}-${GOARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            zip "${ARTIFACT}.zip" dxf2bend.exe
+          else
+            tar czf "${ARTIFACT}.tar.gz" dxf2bend
+          fi
+      - name: Upload artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TAG: ${{ needs.release-please.outputs.dxf2bend_tag_name }}
+        run: |
+          ARTIFACT="dxf2bend-${TAG}-${GOOS}-${GOARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            gh release upload "${TAG}" "${ARTIFACT}.zip"
+          else
+            gh release upload "${TAG}" "${ARTIFACT}.tar.gz"
+          fi

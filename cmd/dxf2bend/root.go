@@ -9,6 +9,8 @@ import (
 	"github.com/yofu/dxf"
 )
 
+var version = "dev"
+
 var (
 	// Persistent flags (available to all subcommands)
 	materialFile string
@@ -34,8 +36,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "dxf2bend [input.dxf]",
-	Short: "Convert DXF files to Wirebender G-code",
+	Use:     "dxf2bend [input.dxf]",
+	Short:   "Convert DXF files to Wirebender G-code",
+	Version: version,
 	Long: `dxf2bend reads a DXF file containing lines, arcs, splines, and polylines,
 and generates G-code for the Wirebender wire bending machine.
 
