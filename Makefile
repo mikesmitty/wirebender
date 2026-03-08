@@ -18,4 +18,4 @@ test-servo:
 	cd cmd/servotest && go run . -verbose
 
 build-dxf2bend:
-	go build -o dxf2bend ./cmd/dxf2bend/main.go
+	go build -o dxf2bend ./cmd/dxf2bend/
