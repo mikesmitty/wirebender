@@ -2,3 +2,4 @@
 cmd/servotest/servotest
 .DS_Store
 /dxf2bend
+cmd/dxf2bend/dxf2bend
