@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Wirebender is a TinyGo firmware for a wire bending machine powered by a Raspberry Pi Pico 2 (RP2350). It controls STS3215 serial bus servos via a G-code-like command interface over USB serial. The module name is `bending-rodriguez`.
+Wirebender is a TinyGo firmware for a wire bending machine powered by a Raspberry Pi Pico 2 (RP2350). It controls STS3215 serial bus servos via a G-code-like command interface over USB serial. The module name is `github.com/mikesmitty/wirebender`.
 
 ## Build & Flash
 

@@ -1,4 +1,4 @@
-module bending-rodriguez/cmd/servotest
+module github.com/mikesmitty/wirebender/cmd/servotest
 
 go 1.25.5
 

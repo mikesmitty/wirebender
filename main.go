@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	"bending-rodriguez/pkg/command"
-	"bending-rodriguez/pkg/event"
-	"bending-rodriguez/pkg/topic"
+	"github.com/mikesmitty/wirebender/pkg/command"
+	"github.com/mikesmitty/wirebender/pkg/event"
+	"github.com/mikesmitty/wirebender/pkg/topic"
 )
 
 const (

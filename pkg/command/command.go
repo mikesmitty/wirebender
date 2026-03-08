@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"bending-rodriguez/pkg/event"
+	"github.com/mikesmitty/wirebender/pkg/event"
 )
 
 type HandlerFunc func(ch *CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error

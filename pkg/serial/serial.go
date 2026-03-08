@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"machine"
 
-	"bending-rodriguez/pkg/event"
+	"github.com/mikesmitty/wirebender/pkg/event"
 )
 
 type Serial struct {

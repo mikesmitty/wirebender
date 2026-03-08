@@ -7,8 +7,8 @@ import (
 	"machine/usb/cdc"
 	"reflect"
 
-	"bending-rodriguez/pkg/event"
-	"bending-rodriguez/pkg/serial"
+	"github.com/mikesmitty/wirebender/pkg/event"
+	"github.com/mikesmitty/wirebender/pkg/serial"
 )
 
 type Serials struct {

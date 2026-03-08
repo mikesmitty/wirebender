@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	"bending-rodriguez/pkg/topic"
+	"github.com/mikesmitty/wirebender/pkg/topic"
 )
 
 const (
