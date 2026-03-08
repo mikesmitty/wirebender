@@ -1,6 +1,8 @@
-module bending-rodriguez
+module github.com/mikesmitty/wirebender
 
-go 1.25.5
+go 1.24.0
+
+toolchain go1.26.1
 
 require github.com/tinygo-org/pio v0.3.0
 
