@@ -1,3 +1,5 @@
+//go:build rp
+
 package serial
 
 import (
