@@ -4,7 +4,10 @@
   "release-type": "go",
   "packages": {
     ".": {
-      "component": "wirebender"
+      "component": "wirebender",
+      "exclude-paths": [
+        "cmd/dxf2bend"
+      ]
     },
     "cmd/dxf2bend": {
       "component": "dxf2bend"
