@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/spf13/cobra"
@@ -153,7 +155,16 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		effSpeedBend = speedBend
 	}
 
-	d, err := dxf.FromFile(inputPath)
+	b, err := os.ReadFile(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to read DXF: %w", err)
+	}
+
+	// Strip all Linetype references (Group Code 6) to avoid missing linetype errors
+	re := regexp.MustCompile("(?m)^[ \\t]*6\\r?\\n.*\\r?\\n")
+	cleaned := re.ReplaceAllString(string(b), "")
+
+	d, err := dxf.FromReader(strings.NewReader(cleaned))
 	if err != nil {
 		return fmt.Errorf("failed to load DXF: %w", err)
 	}

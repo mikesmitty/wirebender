@@ -1,6 +1,6 @@
 module github.com/mikesmitty/wirebender/cmd/servotest
 
-go 1.25.5
+go 1.25.8
 
 require go.bug.st/serial v1.6.4
 

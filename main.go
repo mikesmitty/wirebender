@@ -31,7 +31,7 @@ const (
 
 var (
 	bus        *STS3215
-	servoPin   = machine.GP26
+	servoPin   = machine.GP2
 	version   string
 	gitHash   string
 	buildTime string
@@ -184,7 +184,7 @@ func main() {
 	go RunEvery(monitorServos, 10*time.Second)
 
 	fmt.Printf("Wirebender %s (hash: %s built: %s)\n", version, gitHash, buildTime)
-	fmt.Printf("Current Pin: GP%d\n", servoPin)
+	fmt.Printf("Current Pin: Pin %d\n", servoPin)
 	fmt.Println("Mode: Absolute (G90)")
 	println("Type 'help' or '?' for available commands.")
 
@@ -204,7 +204,7 @@ func initBus(pin machine.Pin) {
 	var err error
 	bus, err = NewSTS3215(pin)
 	if err != nil {
-		fmt.Printf("Error initializing bus on GP%d: %s\n", pin, err.Error())
+		fmt.Printf("Error initializing bus on pin %d: %s\n", pin, err.Error())
 		return
 	}
 	bus.Enable(true)
@@ -983,12 +983,12 @@ func handleSetPin(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			return fmt.Errorf("Invalid pin: %s", p[1:])
 		}
 		newPin := machine.Pin(val)
-		fmt.Fprintf(resp, "Re-initializing bus on GP%d...\n", newPin)
+		fmt.Fprintf(resp, "Re-initializing bus on pin %d...\n", newPin)
 		initBus(newPin)
 		initAxes()
 		return nil
 	}
-	fmt.Fprintf(resp, "Current Servo Pin: GP%d", servoPin)
+	fmt.Fprintf(resp, "Current Servo Pin: Pin %d", servoPin)
 	return nil
 }
 
