@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,10 +65,15 @@ func saveMaterialLibrary(path string, lib *MaterialLibrary) error {
 		return fmt.Errorf("creating directory %s: %w", dir, err)
 	}
 
-	data, err := yaml.Marshal(lib)
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	err := enc.Encode(lib)
+	enc.Close()
 	if err != nil {
 		return fmt.Errorf("marshaling materials: %w", err)
 	}
+	data := buf.Bytes()
 
 	header := []byte("# dxf2bend material properties library\n# Springback values are machine-specific — calibrate on your setup.\n#\n# Usage:\n#   dxf2bend shape.dxf --material <name>\n#   dxf2bend material list\n#   dxf2bend material save myWire --wire 1.0 --sm 1.15 --so 2.0\n\n")
 	return os.WriteFile(path, append(header, data...), 0644)
