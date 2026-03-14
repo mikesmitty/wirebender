@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/mikesmitty/wirebender/compare/dxf2bend-v0.1.0...dxf2bend-v0.2.0) (2026-03-14)
+
+
+### Features
+
+* **dxf2bend:** add visual previews and path selection ([fe6a0c0](https://github.com/mikesmitty/wirebender/commit/fe6a0c04d74c4f9365f1e21f498f704f50f4c3c2))
+* switch to metro-rp2350 target and update Go toolchain ([2805e8c](https://github.com/mikesmitty/wirebender/commit/2805e8c4f191942f54b2f7bf52767d630428e176))
+
+
+### Bug Fixes
+
+* change yaml output indentation to 2 spaces from 4 ([21b6ca5](https://github.com/mikesmitty/wirebender/commit/21b6ca5ac24100871daf1be6b099071cd9ef90b7))
+
 ## 0.1.0 (2026-03-08)
 
 
