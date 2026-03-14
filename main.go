@@ -32,9 +32,9 @@ const (
 var (
 	bus        *STS3215
 	servoPin   = machine.GP2
-	version   string
-	gitHash   string
-	buildTime string
+	version    string
+	gitHash    string
+	buildTime  string
 	diagClient *event.EventClient
 	monitorEvt *event.EventClient
 )

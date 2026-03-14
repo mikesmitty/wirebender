@@ -169,9 +169,9 @@ func (s *STS3215) ReadResponse(timeout time.Duration) ([]byte, error) {
 			time.Sleep(10 * time.Microsecond)
 			continue
 		}
-		
+
 		b := byte(s.rxSm.RxGet() >> 24)
-		
+
 		switch state {
 		case 0: // Wait for first FF
 			if b == 0xFF {
@@ -257,7 +257,7 @@ func (s *STS3215) ReadRegister(id uint8, reg uint8, count uint8) ([]byte, error)
 	if len(resp) < 6 {
 		return nil, errors.New("packet too short")
 	}
-	
+
 	end := len(resp) - 1
 	if end <= 5 {
 		return nil, errors.New("no data in packet")

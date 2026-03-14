@@ -15,8 +15,10 @@ var version = "dev"
 
 var (
 	// Persistent flags (available to all subcommands)
-	materialFile string
-	verbose      bool
+	materialFile  string
+	verbose       bool
+	previewTarget string
+	previewTheme  string
 
 	// Root command flags
 	outputPath    string
@@ -30,6 +32,7 @@ var (
 	wireDia       float64
 	materialName  string
 	arcResolution float64
+	pathID        string
 	pathIndex     int
 	combinePaths  bool
 	simplifyTol   float64
@@ -75,6 +78,11 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&materialFile, "material-file", "",
 		"Path to materials YAML file (default ~/.config/dxf2bend/materials.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+	rootCmd.PersistentFlags().StringVar(&previewTarget, "preview", "terminal", "Preview destination ('terminal', 'none', or a file path like 'out.png')")
+	rootCmd.PersistentFlags().StringVar(&previewTheme, "preview-theme", "cyberpunk", "Preview color theme ('vibrant' or 'cyberpunk')")
+	rootCmd.PersistentFlags().StringVar(&pathID, "path-id", "", "ID of path to use")
+	rootCmd.PersistentFlags().IntVar(&pathIndex, "path-index", -1, "Index of path to use (-1 = first path)")
+	rootCmd.PersistentFlags().BoolVar(&combinePaths, "combine-paths", false, "Concatenate all paths into one")
 
 	// Root-only flags
 	rootCmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output G-code file (default stdout)")
@@ -88,8 +96,6 @@ func init() {
 	rootCmd.Flags().Float64Var(&wireDia, "wire", 0.0, "Wire diameter in mm")
 	rootCmd.Flags().StringVar(&materialName, "material", "", "Material name from library")
 	rootCmd.Flags().Float64Var(&arcResolution, "arc-resolution", 5.0, "Arc discretization step in degrees")
-	rootCmd.Flags().IntVar(&pathIndex, "path-index", -1, "Index of path to use (-1 = first path)")
-	rootCmd.Flags().BoolVar(&combinePaths, "combine-paths", false, "Concatenate all paths into one")
 	rootCmd.Flags().Float64Var(&simplifyTol, "simplify", 0.0, "Ramer-Douglas-Peucker simplification tolerance in mm (0 = disabled)")
 	rootCmd.Flags().BoolVar(&reversePath, "reverse", false, "Reverse the point order before generating G-code")
 	rootCmd.Flags().BoolVar(&strict, "strict", false, "Exit with error when segments are too short for bend radius")
@@ -155,9 +161,37 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		effSpeedBend = speedBend
 	}
 
+	wp, err := parseDXFToWirePath(inputPath)
+	if err != nil {
+		return err
+	}
+
+	if previewTarget != "none" {
+		if err := generatePreview(wp, previewTarget); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: failed to generate preview: %v\n", err)
+		}
+	}
+
+	gcode, err := generateGCodeFromPath(wp, feedScale, effSpeedStraight, effSpeedBend, springbackM, springbackO, verbose)
+	if err != nil {
+		return err
+	}
+
+	if outputPath != "" {
+		if err := os.WriteFile(outputPath, []byte(gcode), 0644); err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+	} else {
+		fmt.Print(gcode)
+	}
+
+	return nil
+}
+
+func parseDXFPaths(inputPath string) ([][]mgl64.Vec3, []string, error) {
 	b, err := os.ReadFile(inputPath)
 	if err != nil {
-		return fmt.Errorf("failed to read DXF: %w", err)
+		return nil, nil, fmt.Errorf("failed to read DXF: %w", err)
 	}
 
 	// Strip all Linetype references (Group Code 6) to avoid missing linetype errors
@@ -166,20 +200,33 @@ func runConvert(cmd *cobra.Command, args []string) error {
 
 	d, err := dxf.FromReader(strings.NewReader(cleaned))
 	if err != nil {
-		return fmt.Errorf("failed to load DXF: %w", err)
+		return nil, nil, fmt.Errorf("failed to load DXF: %w", err)
 	}
 
 	paths := extractPaths(d, arcResolution, verbose)
-
 	if len(paths) == 0 {
-		return fmt.Errorf("no paths found in DXF")
+		return nil, nil, fmt.Errorf("no paths found in DXF")
+	}
+
+	var ids []string
+	for _, p := range paths {
+		ids = append(ids, hashPath(p))
+	}
+
+	return paths, ids, nil
+}
+
+func parseDXFToWirePath(inputPath string) (*WirePath, error) {
+	paths, ids, err := parseDXFPaths(inputPath)
+	if err != nil {
+		return nil, err
 	}
 
 	// Report all paths
 	if len(paths) > 1 {
 		fmt.Fprintf(os.Stderr, "WARNING: Found %d separate paths in DXF:\n", len(paths))
 		for i, p := range paths {
-			fmt.Fprintf(os.Stderr, "  Path %d: %d points\n", i, len(p))
+			fmt.Fprintf(os.Stderr, "  Path %d (ID: %s): %d points\n", i, ids[i], len(p))
 		}
 	}
 
@@ -192,22 +239,40 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		for _, p := range paths {
 			points = append(points, p...)
 		}
+	} else if pathID != "" {
+		found := false
+		for i, id := range ids {
+			if id == pathID {
+				points = paths[i]
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("path ID '%s' not found", pathID)
+		}
 	} else {
+		if len(paths) > 1 && pathIndex < 0 {
+			fmt.Fprintf(os.Stderr, "ERROR: Found %d separate paths in DXF. Please select one:\n", len(paths))
+			for i, p := range paths {
+				fmt.Fprintf(os.Stderr, "  Path %d (ID: %s): %d points\n", i, ids[i], len(p))
+			}
+			fmt.Fprintf(os.Stderr, "\nUse --path-id <id>, --path-index <index>, or --combine-paths to select.\n")
+			fmt.Fprintf(os.Stderr, "Use 'dxf2bend preview %s' to view them graphically.\n", inputPath)
+			return nil, fmt.Errorf("multiple paths found")
+		}
 		idx := 0
 		if pathIndex >= 0 {
 			idx = pathIndex
 		}
 		if idx >= len(paths) {
-			return fmt.Errorf("path index %d out of range (have %d paths)", idx, len(paths))
-		}
-		if len(paths) > 1 && pathIndex < 0 {
-			fmt.Fprintf(os.Stderr, "Using first path (use --path-index or --combine-paths to select)\n")
+			return nil, fmt.Errorf("path index %d out of range (have %d paths)", idx, len(paths))
 		}
 		points = paths[idx]
 	}
 
 	if len(points) < 2 {
-		return fmt.Errorf("selected path too short (need at least 2 points)")
+		return nil, fmt.Errorf("selected path too short (need at least 2 points)")
 	}
 
 	// Path simplification
@@ -230,18 +295,9 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	totalRadius := mandrelRadius + (wireDia / 2.0)
-	gcode, err := generateGCode(points, feedScale, effSpeedStraight, effSpeedBend, springbackM, springbackO, totalRadius, materialName, strict, verbose)
+	wp, err := calculateWirePath(points, springbackM, springbackO, totalRadius, materialName, strict, verbose)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	if outputPath != "" {
-		if err := os.WriteFile(outputPath, []byte(gcode), 0644); err != nil {
-			return fmt.Errorf("failed to write output: %w", err)
-		}
-	} else {
-		fmt.Print(gcode)
-	}
-
-	return nil
+	return wp, nil
 }

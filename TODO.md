@@ -95,5 +95,11 @@
 ### Reverse Path Option
 - [ ] Add `-reverse` flag to flip path direction
 
-### Tangent Distance Validation
-- [ ] Warn clearly when segments are too short for the configured bend radius instead of silently clamping
+### Visual Preview
+- [x] Add isometric projection for wire paths
+- [x] Implement PNG rendering with annotations (bend angles, segment lengths)
+- [x] Add G-code simulation for previewing existing jobs
+- [x] Add terminal image preview (iTerm2/Kitty support)
+- [ ] Implement SVG output support
+- [ ] Add flags to adjust isometric camera rotation (e.g., `--preview-yaw`, `--preview-pitch`)
+- [ ] Add support for rendering arcs as smooth curves instead of discretized segments in the preview
