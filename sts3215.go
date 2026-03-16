@@ -35,16 +35,66 @@ const (
 	RegCurrentTemp     = 0x3F
 )
 
+type Transport interface {
+	WritePacket(packet []byte)
+	Buffered() int
+	ReadByte() (byte, error)
+	Enable(en bool)
+	Close() error
+}
+
 type STS3215 struct {
-	pin   machine.Pin
-	txSm  pio.StateMachine
-	rxSm  pio.StateMachine
-	Debug bool
+	transport Transport
+	Debug     bool
 }
 
 //go:generate pioasm -o go sts3215.pio sts3215_pio.go
 
-func NewSTS3215(pin machine.Pin) (*STS3215, error) {
+func NewSTS3215(transport Transport) *STS3215 {
+	return &STS3215{
+		transport: transport,
+	}
+}
+
+func (s *STS3215) Enable(en bool) {
+	s.transport.Enable(en)
+}
+
+func (s *STS3215) Close() error {
+	return s.transport.Close()
+}
+
+func (s *STS3215) WriteRaw(id uint8, inst uint8, params []uint8) int {
+	length := uint8(len(params) + 2)
+	sum := id + length + inst
+	for _, p := range params {
+		sum += p
+	}
+	checksum := ^sum
+
+	packet := []byte{0xFF, 0xFF, id, length, inst}
+	packet = append(packet, params...)
+	packet = append(packet, checksum)
+
+	if s.Debug {
+		fmt.Print("TX:")
+		for _, b := range packet {
+			fmt.Printf(" %02X", b)
+		}
+		fmt.Println()
+	}
+
+	s.transport.WritePacket(packet)
+	return len(packet)
+}
+
+type PIOTransport struct {
+	pin  machine.Pin
+	txSm pio.StateMachine
+	rxSm pio.StateMachine
+}
+
+func NewPIOTransport(pin machine.Pin) (*PIOTransport, error) {
 	p := pio.PIO0
 	asm := pio.AssemblerV0{}
 
@@ -94,41 +144,17 @@ func NewSTS3215(pin machine.Pin) (*STS3215, error) {
 
 	pin.Configure(machine.PinConfig{Mode: machine.PinPIO0})
 
-	return &STS3215{
+	return &PIOTransport{
 		pin:  pin,
 		txSm: txSm,
 		rxSm: rxSm,
 	}, nil
 }
 
-func (s *STS3215) Enable(en bool) {
-	s.txSm.SetEnabled(en)
-	s.rxSm.SetEnabled(en)
-}
-
-func (s *STS3215) WriteRaw(id uint8, inst uint8, params []uint8) int {
-	length := uint8(len(params) + 2)
-	sum := id + length + inst
-	for _, p := range params {
-		sum += p
-	}
-	checksum := ^sum
-
-	packet := []byte{0xFF, 0xFF, id, length, inst}
-	packet = append(packet, params...)
-	packet = append(packet, checksum)
-
-	if s.Debug {
-		fmt.Print("TX:")
-		for _, b := range packet {
-			fmt.Printf(" %02X", b)
-		}
-		fmt.Println()
-	}
-
+func (p *PIOTransport) WritePacket(packet []byte) {
 	// Clear RX FIFO before sending
-	for !s.rxSm.IsRxFIFOEmpty() {
-		s.rxSm.RxGet()
+	for !p.rxSm.IsRxFIFOEmpty() {
+		p.rxSm.RxGet()
 	}
 
 	for i, b := range packet {
@@ -138,7 +164,7 @@ func (s *STS3215) WriteRaw(id uint8, inst uint8, params []uint8) int {
 				val |= (1 << (j + 1))
 			}
 		}
-		s.txSm.TxPut(val)
+		p.txSm.TxPut(val)
 
 		// Wait for the byte to finish shifting out and echo back (10 bits @ 1Mbps = 10us)
 		// 30us ensures the byte is fully received and in the RX FIFO.
@@ -149,12 +175,38 @@ func (s *STS3215) WriteRaw(id uint8, inst uint8, params []uint8) int {
 		// Draining the last echo risks eating the servo's first response byte
 		// if the servo's return delay is shorter than our drain timing.
 		if i < len(packet)-1 {
-			for !s.rxSm.IsRxFIFOEmpty() {
-				s.rxSm.RxGet()
+			for !p.rxSm.IsRxFIFOEmpty() {
+				p.rxSm.RxGet()
 			}
 		}
 	}
-	return len(packet)
+}
+
+func (p *PIOTransport) Buffered() int {
+	if p.rxSm.IsRxFIFOEmpty() {
+		return 0
+	}
+	return 1
+}
+
+func (p *PIOTransport) ReadByte() (byte, error) {
+	if p.rxSm.IsRxFIFOEmpty() {
+		return 0, errors.New("empty")
+	}
+	return byte(p.rxSm.RxGet() >> 24), nil
+}
+
+func (p *PIOTransport) Enable(en bool) {
+	p.txSm.SetEnabled(en)
+	p.rxSm.SetEnabled(en)
+}
+
+func (p *PIOTransport) Close() error {
+	p.txSm.SetEnabled(false)
+	p.rxSm.SetEnabled(false)
+	p.txSm.Unclaim()
+	p.rxSm.Unclaim()
+	return nil
 }
 
 func (s *STS3215) ReadResponse(timeout time.Duration) ([]byte, error) {
@@ -165,12 +217,16 @@ func (s *STS3215) ReadResponse(timeout time.Duration) ([]byte, error) {
 	var length uint8
 
 	for time.Since(start) < timeout {
-		if s.rxSm.IsRxFIFOEmpty() {
+		if s.transport.Buffered() == 0 {
 			time.Sleep(10 * time.Microsecond)
 			continue
 		}
 
-		b := byte(s.rxSm.RxGet() >> 24)
+		b, err := s.transport.ReadByte()
+		if err != nil {
+			time.Sleep(10 * time.Microsecond)
+			continue
+		}
 
 		switch state {
 		case 0: // Wait for first FF
@@ -354,8 +410,8 @@ func (s *STS3215) Dump(duration time.Duration) {
 	fmt.Printf("Dumping raw bus data for %v...\n", duration)
 	start := time.Now()
 	for time.Since(start) < duration {
-		if !s.rxSm.IsRxFIFOEmpty() {
-			b := byte(s.rxSm.RxGet() >> 24)
+		if s.transport.Buffered() > 0 {
+			b, _ := s.transport.ReadByte()
 			fmt.Printf("%02X ", b)
 		}
 	}

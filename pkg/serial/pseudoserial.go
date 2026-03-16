@@ -46,7 +46,20 @@ func (p *PseudoSerial) WriteByte(c byte) error {
 }
 
 func (p *PseudoSerial) Write(data []byte) (n int, err error) {
-	return os.Stdout.Write(data)
+	for len(data) > 0 {
+		chunk := data
+		if len(chunk) > 64 {
+			chunk = chunk[:64]
+		}
+		m, err := os.Stdout.Write(chunk)
+		n += m
+		if err != nil {
+			return n, err
+		}
+		data = data[m:]
+		time.Sleep(1 * time.Millisecond)
+	}
+	return n, nil
 }
 
 func (p *PseudoSerial) Configure(config machine.UARTConfig) error {

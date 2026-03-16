@@ -195,18 +195,28 @@ func main() {
 
 func initBus(pin machine.Pin) {
 	if bus != nil {
-		bus.txSm.SetEnabled(false)
-		bus.rxSm.SetEnabled(false)
-		bus.txSm.Unclaim()
-		bus.rxSm.Unclaim()
+		bus.Close()
 	}
 
+	var transport Transport
 	var err error
-	bus, err = NewSTS3215(pin)
+
+	if DefaultBusType == "uart" {
+		// Hardware UART pins for RP2040 (can be configured as needed)
+		// For an external board, usually TX and RX are mapped to standard UART pins.
+		tx := machine.Pin(4)
+		rx := machine.Pin(5)
+		transport, err = NewUARTTransport(machine.UART1, tx, rx, 1000000)
+	} else {
+		transport, err = NewPIOTransport(pin)
+	}
+
 	if err != nil {
 		fmt.Printf("Error initializing bus on pin %d: %s\n", pin, err.Error())
 		return
 	}
+
+	bus = NewSTS3215(transport)
 	bus.Enable(true)
 	servoPin = pin
 }
