@@ -198,18 +198,7 @@ func initBus(pin machine.Pin) {
 		bus.Close()
 	}
 
-	var transport Transport
-	var err error
-
-	if DefaultBusType == "uart" {
-		// Hardware UART pins for RP2040 (can be configured as needed)
-		// For an external board, usually TX and RX are mapped to standard UART pins.
-		tx := machine.Pin(4)
-		rx := machine.Pin(5)
-		transport, err = NewUARTTransport(machine.UART1, tx, rx, 1000000)
-	} else {
-		transport, err = NewPIOTransport(pin)
-	}
+	transport, err := NewPIOTransport(pin)
 
 	if err != nil {
 		fmt.Printf("Error initializing bus on pin %d: %s\n", pin, err.Error())
@@ -374,6 +363,7 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 	speed = clampSpeed(speed)
 
 	// Second pass: parse axis positions
+	var targets []SyncTarget
 	var errs []string
 	for _, p := range params {
 		if len(p) < 2 {
@@ -418,10 +408,17 @@ func handleMotion(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, pa
 			posDeg = axis.Position
 		}
 		absTicks := degreesToTicks(posDeg) + axis.Offset
-		if err := bus.SetPosition(id, absTicks, speed); err != nil {
-			errs = append(errs, fmt.Sprintf("ERROR: %s unreachable", axisNames[id]))
-		}
+		targets = append(targets, SyncTarget{
+			ID:    id,
+			Pos:   absTicks,
+			Speed: speed,
+		})
 	}
+
+	if len(targets) > 0 {
+		bus.SyncWritePositionSpeed(targets)
+	}
+
 	if len(errs) > 0 {
 		for _, e := range errs {
 			fmt.Fprintln(resp, e)
@@ -502,11 +499,14 @@ func handleArc(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, param
 		// Convert feed mm to degrees then to ticks
 		feedDeg := mmToFeedDegrees(feedAxis.Position)
 		feedTicks := degreesToTicks(feedDeg) + feedAxis.Offset
-		bus.SetPosition(ID_FEED, feedTicks, speed)
 
 		// Convert bend degrees to ticks
 		bendTicks := degreesToTicks(bendAxis.Position) + bendAxis.Offset
-		bus.SetPosition(ID_BEND, bendTicks, speed)
+
+		bus.SyncWritePositionSpeed([]SyncTarget{
+			{ID: ID_FEED, Pos: feedTicks, Speed: speed},
+			{ID: ID_BEND, Pos: bendTicks, Speed: speed},
+		})
 
 		// Delay between segments for servo settling
 		time.Sleep(80 * time.Millisecond)
@@ -555,6 +555,7 @@ func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 		ids = map[uint8]bool{ID_FEED: true, ID_BEND: true, ID_ROTATE: true}
 	}
 
+	var targets []SyncTarget
 	var errs []string
 	for id := range ids {
 		if !servoOnline[id] {
@@ -563,9 +564,15 @@ func handleHome(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, para
 		}
 		axis := axes[id]
 		axis.Position = 0
-		if err := bus.SetPosition(id, axis.Offset, speed); err != nil {
-			errs = append(errs, fmt.Sprintf("ERROR: %s unreachable", axisNames[id]))
-		}
+		targets = append(targets, SyncTarget{
+			ID:    id,
+			Pos:   axis.Offset,
+			Speed: speed,
+		})
+	}
+
+	if len(targets) > 0 {
+		bus.SyncWritePositionSpeed(targets)
 	}
 
 	if len(errs) > 0 {
@@ -652,9 +659,7 @@ func handleSetPosition(ch *command.CommandHandler, resp *bytes.Buffer, cmd strin
 }
 
 func handleEmergencyStop(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
-	for _, id := range []uint8{ID_FEED, ID_BEND, ID_ROTATE} {
-		bus.WriteRegister(id, RegTorqueEnable, []uint8{0})
-	}
+	bus.SyncWriteRegister([]uint8{ID_FEED, ID_BEND, ID_ROTATE}, RegTorqueEnable, []uint8{0})
 	bus.Enable(false)
 	resp.WriteString("EMERGENCY STOP")
 	return nil
@@ -679,17 +684,13 @@ func parseTorqueTargets(params [][]byte) []uint8 {
 }
 
 func handleTorqueEnable(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
-	for _, id := range parseTorqueTargets(params) {
-		bus.WriteRegister(id, RegTorqueEnable, []uint8{1})
-	}
+	bus.SyncWriteRegister(parseTorqueTargets(params), RegTorqueEnable, []uint8{1})
 	resp.WriteString("ok")
 	return nil
 }
 
 func handleTorqueDisable(ch *command.CommandHandler, resp *bytes.Buffer, cmd string, params [][]byte) error {
-	for _, id := range parseTorqueTargets(params) {
-		bus.WriteRegister(id, RegTorqueEnable, []uint8{0})
-	}
+	bus.SyncWriteRegister(parseTorqueTargets(params), RegTorqueEnable, []uint8{0})
 	resp.WriteString("ok")
 	return nil
 }

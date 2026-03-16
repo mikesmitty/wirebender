@@ -35,22 +35,14 @@ const (
 	RegCurrentTemp     = 0x3F
 )
 
-type Transport interface {
-	WritePacket(packet []byte)
-	Buffered() int
-	ReadByte() (byte, error)
-	Enable(en bool)
-	Close() error
-}
-
 type STS3215 struct {
-	transport Transport
+	transport *PIOTransport
 	Debug     bool
 }
 
 //go:generate pioasm -o go sts3215.pio sts3215_pio.go
 
-func NewSTS3215(transport Transport) *STS3215 {
+func NewSTS3215(transport *PIOTransport) *STS3215 {
 	return &STS3215{
 		transport: transport,
 	}
@@ -265,6 +257,16 @@ func (s *STS3215) ReadResponse(timeout time.Duration) ([]byte, error) {
 				resp[idx] = b
 				idx++
 				if idx == int(length)+4 {
+					// Validate checksum
+					sum := uint8(0)
+					for i := 2; i < idx-1; i++ {
+						sum += resp[i]
+					}
+					if resp[idx-1] != ^sum {
+						state = 0
+						continue
+					}
+
 					ret := make([]byte, idx)
 					copy(ret, resp[:idx])
 					if s.Debug {
@@ -329,6 +331,19 @@ func (s *STS3215) WriteRegister(id uint8, reg uint8, data []uint8) {
 	s.WriteRaw(id, InstWrite, append([]uint8{reg}, data...))
 }
 
+func (s *STS3215) SyncWriteRegister(ids []uint8, reg uint8, data []uint8) {
+	if len(ids) == 0 {
+		return
+	}
+
+	params := []uint8{reg, uint8(len(data))}
+	for _, id := range ids {
+		params = append(params, id)
+		params = append(params, data...)
+	}
+	s.WriteRaw(0xFE, InstSyncWrite, params)
+}
+
 func (s *STS3215) SetID(oldID, newID uint8) error {
 	if s.Debug {
 		fmt.Printf("SetID: Unlocking ID %d\n", oldID)
@@ -348,6 +363,27 @@ func (s *STS3215) SetID(oldID, newID uint8) error {
 	s.WriteRegister(newID, RegLock, []uint8{1})
 	s.ReadResponse(50 * time.Millisecond) // consume servo response
 	return nil
+}
+
+type SyncTarget struct {
+	ID    uint8
+	Pos   int16
+	Speed int16
+}
+
+func (s *STS3215) SyncWritePositionSpeed(targets []SyncTarget) {
+	if len(targets) == 0 {
+		return
+	}
+	
+	params := []uint8{RegTargetPosition, 6}
+	for _, t := range targets {
+		params = append(params, t.ID)
+		params = append(params, uint8(t.Pos&0xFF), uint8(t.Pos>>8))
+		params = append(params, 0x00, 0x00) // Time
+		params = append(params, uint8(t.Speed&0xFF), uint8(t.Speed>>8))
+	}
+	s.WriteRaw(0xFE, InstSyncWrite, params)
 }
 
 func (s *STS3215) SetPosition(id uint8, pos int16, speed int16) error {
@@ -392,11 +428,17 @@ func (s *STS3215) GetStatus(id uint8) (ServoStatus, error) {
 	if len(data) < 8 {
 		return ServoStatus{}, errors.New("short data")
 	}
+	rawLoad := uint16(data[4]) | (uint16(data[5]) << 8)
+	load := int16(rawLoad & 0x3FF)
+	if rawLoad&(1<<10) != 0 {
+		load = -load
+	}
+
 	return ServoStatus{
 		ID:      id,
 		Pos:     int16(uint16(data[0]) | (uint16(data[1]) << 8)),
 		Speed:   int16(uint16(data[2]) | (uint16(data[3]) << 8)),
-		Load:    int16(uint16(data[4]) | (uint16(data[5]) << 8)),
+		Load:    load,
 		Voltage: data[6],
 		Temp:    data[7],
 	}, nil
