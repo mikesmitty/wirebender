@@ -75,7 +75,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: cmd/dxf2bend/go.mod
       - name: Build dxf2bend
         env:
           GOOS: ${{ matrix.goos }}
@@ -86,7 +86,9 @@ jobs:
           if [ "${GOOS}" = "windows" ]; then
             BINARY="dxf2bend.exe"
           fi
-          go build -ldflags="-X main.version=${VERSION}" -o "${BINARY}" ./cmd/dxf2bend/
+          cd cmd/dxf2bend
+          go build -ldflags="-X main.version=${VERSION}" -o "../../${BINARY}" .
+          cd ../..
       - name: Package artifact
         env:
           GOOS: ${{ matrix.goos }}
