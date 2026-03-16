@@ -58,4 +58,4 @@ jobs:
         with:
           tinygo-version: 0.37.0
       - name: Build firmware
-        run: tinygo build -target=pico2 -o build.elf .
+        run: make build
