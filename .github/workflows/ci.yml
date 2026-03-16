@@ -54,8 +54,11 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - uses: acifani/setup-tinygo@v2
-        with:
-          tinygo-version: 0.37.0
+      - name: Install TinyGo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --pattern '*amd64.deb' --repo tinygo-org/tinygo
+          sudo dpkg -i tinygo_*.deb
       - name: Build firmware
         run: make build
