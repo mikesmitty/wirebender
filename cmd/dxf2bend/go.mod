@@ -10,7 +10,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/yofu/dxf v0.0.0-20250806094206-f3988c7f0176
-	golang.org/x/image v0.37.0
+	golang.org/x/image v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
