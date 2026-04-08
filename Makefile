@@ -1,5 +1,5 @@
 TINYGO ?= tinygo
-GOTOOLCHAIN ?= go1.25.8
+GOTOOLCHAIN ?= go1.25.9
 TARGET ?= metro-rp2350
 SERIAL ?= usb
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
