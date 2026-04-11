@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/mikesmitty/wirebender/compare/dxf2bend-v0.1.0...dxf2bend-v0.2.0) (2026-04-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* Update module golang.org/x/image to v0.39.0 ([#9](https://github.com/mikesmitty/wirebender/issues/9))
+* Update module golang.org/x/image to v0.38.0 ([#7](https://github.com/mikesmitty/wirebender/issues/7))
+
+### Features
+
+* **dxf2bend:** add visual previews and path selection ([fe6a0c0](https://github.com/mikesmitty/wirebender/commit/fe6a0c04d74c4f9365f1e21f498f704f50f4c3c2))
+* switch to metro-rp2350 target and update Go toolchain ([2805e8c](https://github.com/mikesmitty/wirebender/commit/2805e8c4f191942f54b2f7bf52767d630428e176))
+* Update module golang.org/x/image to v0.38.0 ([#7](https://github.com/mikesmitty/wirebender/issues/7)) ([7001b24](https://github.com/mikesmitty/wirebender/commit/7001b242b2e78df679d32c1db49daedb9cdd24ee))
+* Update module golang.org/x/image to v0.39.0 ([#9](https://github.com/mikesmitty/wirebender/issues/9)) ([107209b](https://github.com/mikesmitty/wirebender/commit/107209b1608627ffdb3a27d969926455d8ac73e1))
+
+
+### Bug Fixes
+
+* change yaml output indentation to 2 spaces from 4 ([21b6ca5](https://github.com/mikesmitty/wirebender/commit/21b6ca5ac24100871daf1be6b099071cd9ef90b7))
+
 ## 0.1.0 (2026-03-08)
 
 
