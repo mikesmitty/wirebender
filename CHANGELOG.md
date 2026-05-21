@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/mikesmitty/wirebender/compare/wirebender-v0.1.0...wirebender-v0.2.0) (2026-05-21)
+
+
+### Features
+
+* **dxf2bend:** add visual previews and path selection ([fe6a0c0](https://github.com/mikesmitty/wirebender/commit/fe6a0c04d74c4f9365f1e21f498f704f50f4c3c2))
+* **sts3215:** add support for external UART half-duplex transport ([c2daf1e](https://github.com/mikesmitty/wirebender/commit/c2daf1e69603ca432434e5cdb3b87005601a8f08))
+* switch to metro-rp2350 target and update Go toolchain ([2805e8c](https://github.com/mikesmitty/wirebender/commit/2805e8c4f191942f54b2f7bf52767d630428e176))
+* Update module go.bug.st/serial to v1.7.0 ([#13](https://github.com/mikesmitty/wirebender/issues/13)) ([c8cd21e](https://github.com/mikesmitty/wirebender/commit/c8cd21ecb9ed09930412b9c77f5410020fc2c01d))
+
+
+### Bug Fixes
+
+* Update dependency golang to v1.25.10 ([#11](https://github.com/mikesmitty/wirebender/issues/11)) ([94b3167](https://github.com/mikesmitty/wirebender/commit/94b316702ac506206228e0004e1899f696499a18))
+* Update dependency golang to v1.25.9 ([#8](https://github.com/mikesmitty/wirebender/issues/8)) ([bbbbfe0](https://github.com/mikesmitty/wirebender/commit/bbbbfe037c740cdda4a06d486876f16250737ef0))
+
 ## 0.1.0 (2026-03-08)
 
 
