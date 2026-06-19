@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.0](https://github.com/mikesmitty/wirebender/compare/dxf2bend-v0.1.0...dxf2bend-v0.2.0) (2026-06-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Update module golang.org/x/image to v0.43.0 ([#18](https://github.com/mikesmitty/wirebender/issues/18))
+* Update module golang.org/x/image to v0.42.0 ([#17](https://github.com/mikesmitty/wirebender/issues/17))
+* Update module golang.org/x/image to v0.41.0 ([#14](https://github.com/mikesmitty/wirebender/issues/14))
+* Update module golang.org/x/image to v0.40.0 ([#12](https://github.com/mikesmitty/wirebender/issues/12))
+* Update module golang.org/x/image to v0.39.0 ([#9](https://github.com/mikesmitty/wirebender/issues/9))
+* Update module golang.org/x/image to v0.38.0 ([#7](https://github.com/mikesmitty/wirebender/issues/7))
+
+### Features
+
+* **dxf2bend:** add visual previews and path selection ([fe6a0c0](https://github.com/mikesmitty/wirebender/commit/fe6a0c04d74c4f9365f1e21f498f704f50f4c3c2))
+* switch to metro-rp2350 target and update Go toolchain ([2805e8c](https://github.com/mikesmitty/wirebender/commit/2805e8c4f191942f54b2f7bf52767d630428e176))
+* Update module golang.org/x/image to v0.38.0 ([#7](https://github.com/mikesmitty/wirebender/issues/7)) ([7001b24](https://github.com/mikesmitty/wirebender/commit/7001b242b2e78df679d32c1db49daedb9cdd24ee))
+* Update module golang.org/x/image to v0.39.0 ([#9](https://github.com/mikesmitty/wirebender/issues/9)) ([107209b](https://github.com/mikesmitty/wirebender/commit/107209b1608627ffdb3a27d969926455d8ac73e1))
+* Update module golang.org/x/image to v0.40.0 ([#12](https://github.com/mikesmitty/wirebender/issues/12)) ([f0db80e](https://github.com/mikesmitty/wirebender/commit/f0db80ed73085a70e54d1be11e048434414d2e02))
+* Update module golang.org/x/image to v0.41.0 ([#14](https://github.com/mikesmitty/wirebender/issues/14)) ([5bf3ccd](https://github.com/mikesmitty/wirebender/commit/5bf3ccd79e9610fddc63c992da0215e9d2d09ac0))
+* Update module golang.org/x/image to v0.42.0 ([#17](https://github.com/mikesmitty/wirebender/issues/17)) ([29d483b](https://github.com/mikesmitty/wirebender/commit/29d483b08487a803851e1c5b91882d9f636cb0e2))
+* Update module golang.org/x/image to v0.43.0 ([#18](https://github.com/mikesmitty/wirebender/issues/18)) ([c2d30ad](https://github.com/mikesmitty/wirebender/commit/c2d30ad536819439f397f386e70458d9f00d4095))
+
+
+### Bug Fixes
+
+* change yaml output indentation to 2 spaces from 4 ([21b6ca5](https://github.com/mikesmitty/wirebender/commit/21b6ca5ac24100871daf1be6b099071cd9ef90b7))
+
 ## 0.1.0 (2026-03-08)
 
 
