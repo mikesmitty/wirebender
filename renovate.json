@@ -11,8 +11,8 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": [
-        "^Makefile$"
+      "managerFilePatterns": [
+        "/^Makefile$/"
       ],
       "matchStrings": [
         "GOTOOLCHAIN \\?= go(?<currentValue>[\\d.]+)"
