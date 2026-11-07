@@ -8,7 +8,7 @@ require (
 	github.com/go-gl/mathgl v1.2.0
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/yofu/dxf v0.0.0-20250806094206-f3988c7f0176
 	golang.org/x/image v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
