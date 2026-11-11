@@ -20,7 +20,7 @@ jobs:
       dxf2bend_version: ${{ steps.release.outputs['cmd/dxf2bend--version'] }}
     steps:
       - id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
 
   build-firmware:
     needs: release-please
